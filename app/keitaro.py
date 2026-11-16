@@ -1,0 +1,81 @@
+import httpx
+from fastapi import HTTPException
+
+from .config import get_settings
+
+
+class KeitaroUnavailable(Exception):
+    """5xx/сеть после ретрая — вызывающий код может упасть на кэш."""
+
+
+class KeitaroClient:
+    def __init__(self, api_key: str | None = None, api_base: str | None = None, transport=None):
+        s = get_settings()
+        self.base_url = s.keitaro_base_url.rstrip("/")
+        self.api_base = (api_base or s.keitaro_api_base).rstrip("/")
+        self.api_base_fallback = s.keitaro_api_base_fallback.rstrip("/")
+        self.api_key = api_key or s.keitaro_api_key
+        self.timeout, self.retries = s.keitaro_timeout, s.keitaro_retries
+        self._transport, self._client = transport, None
+
+    async def _request(self, method: str, path: str, *, v2: bool = False):
+        base = self.api_base_fallback if v2 else self.api_base
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+            )
+        headers = {"Api-Key": self.api_key, "Accept": "application/json"}
+        last_error: Exception | None = None
+        for _ in range(self.retries + 1):
+            try:
+                resp = await self._client.request(method, f"{base}{path}", headers=headers)
+            except httpx.RequestError as e:
+                last_error = e
+                continue
+            if resp.status_code >= 500:
+                last_error = httpx.HTTPStatusError(
+                    str(resp.status_code), request=resp.request, response=resp
+                )
+                continue
+            return self._handle(resp, v2=v2)
+        raise KeitaroUnavailable(f"Keitaro unavailable: {last_error}")
+
+    @staticmethod
+    def _handle(resp: httpx.Response, *, v2: bool = False):
+        status = resp.status_code
+        if status in (401, 403):
+            # 403 различаем: JSON с полем error — права ключа,
+            # HTML-страница логина — белый список IP (актуально для /admin/api/v1).
+            try:
+                body = resp.json()
+            except ValueError:
+                body = None
+            if isinstance(body, dict) and "error" in body:
+                raise HTTPException(403, f"Keitaro permission denied: {body['error']}")
+            where = "/admin/api/v1" if v2 else "legacy path"
+            raise HTTPException(
+                502,
+                f"Keitaro admin blocked for this IP ({where}): 403 login page, check IP whitelist",
+            )
+        if status == 404:
+            raise HTTPException(404, "Not found in Keitaro")
+        if status >= 400:
+            raise HTTPException(502, f"Keitaro returned {status}")
+        try:
+            data = resp.json()
+        except ValueError:
+            raise HTTPException(502, "Keitaro returned non-JSON response")
+        # Некоторые сборки отдают 200 + {"error": "..."} — ловим и это.
+        if isinstance(data, dict) and "error" in data:
+            raise HTTPException(403, f"Keitaro permission denied: {data['error']}")
+        return data
+
+    async def get_campaign(self, campaign_id: int, *, v2: bool = False):
+        return await self._request("GET", f"/campaigns/{campaign_id}", v2=v2)
+
+    async def get_campaigns(self, *, v2: bool = False):
+        return await self._request("GET", "/campaigns", v2=v2)
+
+    async def aclose(self):
+        if self._client:
+            await self._client.aclose()
