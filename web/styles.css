@@ -189,12 +189,75 @@ td em { color: var(--error); font-style: normal; }
 
 .state-list { margin: 8px 0 0; padding-left: 20px; }
 
+/* Тулбар добавления офера: живой поиск по ID, поток и кнопки черновика. */
+.offer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: flex-start;
+  padding: 14px 14px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--row-hover);
+  margin-top: 14px;
+}
+.offer-toolbar .field { margin-bottom: 10px; }
+.offer-search-field { flex: 1 1 230px; }
+.offer-search-field input { max-width: none; }
+
+.stream-field select {
+  min-width: 200px;
+  padding: 9px 12px;
+  font-size: 1rem;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.stream-field select:disabled { color: var(--muted); background: var(--info-bg); }
+
+/* Выравниваем кнопки по строке ввода (высота label + отступ). */
+.toolbar-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 1.875rem; }
+
+.offer-hint {
+  min-height: 1.3em;
+  margin: 6px 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.offer-hint-found { color: var(--success); }
+.offer-hint-error { color: var(--error); }
+
+.status-line.error { background: var(--error-bg); color: var(--error); }
+
+/* Пометка офера, добавленного в локальный черновик (на сервер ещё не ушёл). */
+.draft-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--warn-border);
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: 1px;
+}
+
 /* Маленькие экраны: компактнее, длинные имена переносятся, таблицу можно прокрутить. */
 @media (max-width: 560px) {
   .card { margin: 12px 10px; padding: 16px 14px 20px; }
   body { font-size: 15px; }
   th, td { padding: 7px 8px; }
   table { font-size: 0.875rem; }
+  /* Тулбар на узком экране: поля в столбик, кнопки без отступа-выравнивания. */
+  .offer-toolbar { padding: 12px 10px 8px; gap: 8px; }
+  .offer-search-field, .stream-field { flex: 1 1 100%; }
+  .stream-field select { min-width: 0; width: 100%; }
+  .toolbar-actions { margin-top: 0; }
   /* Колонка офера не сжимается до 3 символов: остальное прокручивается внутри обёртки. */
   body[data-page="streams"] th:first-child,
   body[data-page="streams"] td:first-child { min-width: 14rem; }

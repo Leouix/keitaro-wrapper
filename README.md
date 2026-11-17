@@ -3,6 +3,8 @@
 Обёртка над Admin API Keitaro (https://tlgk.host): аутентификация по `Api-Key`,
 кэш кампаний в SQLite, устойчивость к недоступности Keitaro.
 
+Документация апи: https://tlgk.host/admin/
+
 ## Быстрый старт
 
 ```bash

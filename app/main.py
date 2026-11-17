@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 
 from .db import Base, engine
 from .keitaro import KeitaroClient, KeitaroUnavailable
-from .routers import campaigns, offers
+from .routers import campaigns, offers, streams
 from .routers import settings as settings_router
 from .routers.campaigns import get_keitaro
 
@@ -16,6 +16,7 @@ app = FastAPI(title="Keitaro Wrapper API", version="0.1.0")
 app.include_router(settings_router.router)
 app.include_router(campaigns.router)
 app.include_router(offers.router)
+app.include_router(streams.router)
 
 # Фронт — статика из web/ (файлы принадлежат Pixel, бэкенд только отдаёт их).
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"

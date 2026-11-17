@@ -23,12 +23,12 @@
     </div>
 
     <div id="empty-state" hidden>
-      <p class="message info">В этой кампании нет потоков с оферами.</p>
-      <p class="no-offers">Потоки кампании:</p>
-      <ul id="empty-streams" class="state-list"></ul>
+      <p class="message info">В этой кампании нет потоков.</p>
     </div>
 
     <div id="table-block" hidden>
+      
+
       <div class="table-wrap">
         <table>
           <caption id="table-caption"></caption>
@@ -46,6 +46,29 @@
         </table>
       </div>
       <p id="no-offers-line" class="no-offers" hidden></p>
+
+      <div id="offer-toolbar" class="offer-toolbar">
+        
+        <div class="field offer-search-field">
+          <label for="offer-id">Добавить оффер</label>
+          <input id="offer-id" type="search" inputmode="numeric" autocomplete="off"
+                 placeholder="Введите ID оффера" aria-describedby="offer-hint">
+          <p id="offer-hint" class="offer-hint" role="status" aria-live="polite"></p>
+        </div>
+        <div class="field stream-field">
+          <label for="stream-select">Поток</label>
+          <select id="stream-select"></select>
+          <p id="streams-hint" class="offer-hint" hidden>В этой кампании нет потоков, принимающих оферы</p>
+        </div>
+        <div class="toolbar-actions">
+          <button id="add-btn" type="button" class="btn btn-secondary" disabled
+                  title="Сначала найдите офер по ID">Добавить</button>
+          <button id="send-btn" type="button" class="btn" disabled
+                  title="Сначала добавьте офер в черновик кнопкой «Добавить»">Отправить в Кейтаро</button>
+        </div>
+      </div>
+      <p id="send-status" class="status-line" role="status" hidden></p>
+
     </div>
   </div>
 </main>

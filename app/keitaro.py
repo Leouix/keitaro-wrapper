@@ -17,7 +17,7 @@ class KeitaroClient:
         self.timeout, self.retries = s.keitaro_timeout, s.keitaro_retries
         self._transport, self._client = transport, None
 
-    async def _request(self, method: str, path: str):
+    async def _request(self, method: str, path: str, json: dict | None = None):
         base = self.api_base
         if self._client is None:
             self._client = httpx.AsyncClient(
@@ -27,7 +27,9 @@ class KeitaroClient:
         last_error: Exception | None = None
         for _ in range(self.retries + 1):
             try:
-                resp = await self._client.request(method, f"{base}{path}", headers=headers)
+                resp = await self._client.request(
+                    method, f"{base}{path}", headers=headers, json=json
+                )
             except httpx.RequestError as e:
                 last_error = e
                 continue
@@ -79,6 +81,19 @@ class KeitaroClient:
 
     async def get_offer(self, offer_id: int):
         return await self._request("GET", f"/offers/{offer_id}")
+
+    async def get_stream(self, stream_id: int):
+        return await self._request("GET", f"/streams/{stream_id}")
+
+    async def update_stream_offers(self, stream_id: int, campaign_id, offers: list[dict]):
+        """PUT /streams/{id} — частичный апдейт: присланные поля меняются,
+        остальные (name, type, ...) Keitaro не трогает. Idempotent, поэтому
+        ретраи только на сеть/5xx безопасны."""
+        return await self._request(
+            "PUT",
+            f"/streams/{stream_id}",
+            json={"campaign_id": campaign_id, "offers": offers},
+        )
 
     async def aclose(self):
         if self._client:

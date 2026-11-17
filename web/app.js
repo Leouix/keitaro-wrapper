@@ -296,12 +296,20 @@ function initStreams() {
   const errorText = $('error-text');
   const errorActions = $('error-actions');
   const emptyState = $('empty-state');
-  const emptyList = $('empty-streams');
   const tableBlock = $('table-block');
   const tbody = $('table-body');
   const caption = $('table-caption');
   const noOffersLine = $('no-offers-line');
   const title = $('page-title');
+
+  const toolbar = $('offer-toolbar');
+  const offerIdInput = $('offer-id');
+  const offerHint = $('offer-hint');
+  const streamSelect = $('stream-select');
+  const streamsHint = $('streams-hint');
+  const addBtn = $('add-btn');
+  const sendBtn = $('send-btn');
+  const sendStatus = $('send-status');
 
   const match = window.location.pathname.match(/^\/fb\/campaigns\/(\d+)\/streams\/?$/);
   if (!match) {
@@ -310,8 +318,19 @@ function initStreams() {
     return;
   }
   const campaignId = match[1];
+  console.log('match', match)
   title.textContent = `Потоки кампании ${campaignId}`;
   document.title = `Потоки кампании ${campaignId} — Keitaro`;
+
+  let streamsData = [];      // потоки с сервера (последний load())
+  let offersMap = new Map(); // offer_id -> тело офера
+  let foundOffer = null;     // офер, найденный живым поиском
+  let draft = [];            // [{ streamId, offer }] — локальный черновик
+  let sending = false;
+
+  let offerSearchTimer = null;
+  let offerSearchController = null;
+  let offerSearchSeq = 0;
 
   function showError(msg, actions = []) {
     errorText.textContent = msg;
@@ -349,7 +368,7 @@ function initStreams() {
     return b;
   }
 
-  function makeRow({ stream, entry, offer }) {
+  function makeRow({ stream, entry, offer, share, isDraft }) {
     const tr = document.createElement('tr');
 
     const tdOffer = document.createElement('td');
@@ -365,13 +384,19 @@ function initStreams() {
       em.textContent = 'не удалось загрузить офер';
       tdOffer.appendChild(em);
     }
+    if (isDraft) {
+      const badge = document.createElement('span');
+      badge.className = 'draft-badge';
+      badge.textContent = 'черновик';
+      tdOffer.append(' ', badge);
+    }
 
     const tdState = document.createElement('td');
     tdState.textContent = (offer && offer.state) || entry.state || '—';
 
     const tdShare = document.createElement('td');
     tdShare.className = 'num';
-    tdShare.textContent = entry.share == null ? '—' : `${entry.share}%`;
+    tdShare.textContent = share == null ? '—' : `${share}%`;
 
     const tdStream = document.createElement('td');
     tdStream.className = 'wrap-anywhere';
@@ -390,12 +415,257 @@ function initStreams() {
     return tr;
   }
 
-  async function load() {
+  /** Таблица: данные сервера + локальный черновик; для затронутых потоков доли пересчитаны. */
+  function renderTable() {
+    const rows = [];
+    const noOfferNames = [];
+    for (const s of streamsData) {
+      const entries = Array.isArray(s.offers) ? s.offers : [];
+      const streamDraft = draft.filter((d) => d.streamId === s.id);
+      if (!entries.length && !streamDraft.length) {
+        noOfferNames.push(s.name || `Поток ${s.id}`);
+        continue;
+      }
+      // Пересчёт долей только у затронутого потока: объединённый список
+      // (существующие + черновик) получает share = floor(100 / n), порядок сохранён.
+      const hasDraft = streamDraft.length > 0;
+      const share = hasDraft ? Math.floor(100 / (entries.length + streamDraft.length)) : null;
+      for (const entry of entries) {
+        rows.push({
+          stream: s,
+          entry,
+          offer: offersMap.get(entry.offer_id) ?? null,
+          share: hasDraft ? share : (entry.share == null ? null : entry.share),
+          isDraft: false,
+        });
+      }
+      for (const d of streamDraft) {
+        rows.push({ stream: s, entry: { offer_id: d.offer.id, share }, offer: d.offer, share, isDraft: true });
+      }
+    }
+
+    caption.textContent = `Потоки и оферы кампании ${campaignId}`;
+    tbody.replaceChildren(...rows.map(makeRow));
+
+    noOffersLine.hidden = noOfferNames.length === 0;
+    if (noOfferNames.length) {
+      noOffersLine.textContent = 'Без оферов: ' + noOfferNames.join(', ');
+    }
+  }
+
+  /** В select — только потоки со схемой landings: только они принимают оферы. */
+  function populateStreamSelect() {
+    const landings = streamsData.filter((s) => s.schema === 'landings');
+    const prev = streamSelect.value;
+    streamSelect.replaceChildren(
+      ...landings.map((s) => {
+        const opt = document.createElement('option');
+        opt.value = String(s.id);
+        opt.textContent = s.name || `Поток ${s.id}`;
+        return opt;
+      })
+    );
+    streamsHint.hidden = landings.length > 0;
+    streamSelect.disabled = landings.length === 0;
+    if (landings.length) {
+      if (landings.some((s) => String(s.id) === prev)) streamSelect.value = prev;
+      else streamSelect.selectedIndex = 0;
+    }
+    syncDraftButtons();
+  }
+
+  function isDuplicate(streamId, offerId) {
+    const s = streamsData.find((x) => x.id === streamId);
+    if (s && Array.isArray(s.offers) && s.offers.some((o) => o.offer_id === offerId)) return true;
+    return draft.some((d) => d.streamId === streamId && d.offer.id === offerId);
+  }
+
+  function syncDraftButtons() {
+    const streamId = Number(streamSelect.value || 0);
+    const duplicate = foundOffer && streamId ? isDuplicate(streamId, foundOffer.id) : false;
+
+    addBtn.disabled = sending || !foundOffer || !streamId || duplicate;
+    addBtn.title = sending ? 'Идёт отправка…'
+      : !foundOffer ? 'Сначала найдите офер по ID'
+      : !streamId ? 'Выберите поток'
+      : duplicate ? 'Этот офер уже есть в выбранном потоке или в черновике'
+      : 'Добавляется только в локальный черновик — до «Отправить в Кейтаро» ничего не уходит на сервер';
+
+    sendBtn.disabled = sending || draft.length === 0;
+    sendBtn.title = sending ? 'Идёт отправка…'
+      : draft.length === 0 ? 'Сначала добавьте офер в черновик кнопкой «Добавить»'
+      : '';
+  }
+
+  function setOfferHint(text, kind) {
+    offerHint.textContent = text;
+    offerHint.className = kind ? `offer-hint ${kind}` : 'offer-hint';
+  }
+
+  function resetOfferSearch() {
+    foundOffer = null;
+    setOfferHint('Введите ID оффера');
+    syncDraftButtons();
+  }
+
+  async function searchOffer(idStr) {
+    const mySeq = ++offerSearchSeq;
+    offerSearchController = new AbortController();
+    const { status, body } = await requestJson(`/api/offers/${idStr}`, {
+      headers: { Accept: 'application/json' },
+      signal: offerSearchController.signal,
+    });
+
+    // Ответ на устаревший (или отменённый) запрос — молча выбрасываем.
+    if (mySeq !== offerSearchSeq) return;
+    offerSearchController = null;
+
+    if (status === 200 && body && body.id != null) {
+      foundOffer = body;
+      let text = `#${body.id}${body.name ? ` — ${body.name}` : ''}`;
+      const payout = Number(body.payout_value);
+      if (payout) text += ` · ${payout}${body.payout_currency ? ` ${body.payout_currency}` : ''}`;
+      if (body.state) text += ` · ${body.state}`;
+      setOfferHint(text, 'offer-hint-found');
+    } else if (status === 404) {
+      foundOffer = null;
+      setOfferHint(`Офер с ID ${parseInt(idStr, 10)} не найден`, 'offer-hint-error');
+    } else if (status === 409) {
+      foundOffer = null;
+      setOfferHint('Сначала укажите API key на главной.', 'offer-hint-error');
+    } else if (status === 502) {
+      foundOffer = null;
+      setOfferHint('Keitaro недоступен, попробуйте позже.', 'offer-hint-error');
+    } else if (status === 0) {
+      foundOffer = null;
+      setOfferHint('Сеть недоступна, попробуйте ещё раз.', 'offer-hint-error');
+    } else {
+      foundOffer = null;
+      setOfferHint(detailToText(body && body.detail, `Не удалось найти офер (код ${status}).`), 'offer-hint-error');
+    }
+    syncDraftButtons();
+  }
+
+  // Пауза 300 мс; в поле остаются только цифры положительного целого.
+  offerIdInput.addEventListener('input', () => {
+    const digits = offerIdInput.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    if (digits !== offerIdInput.value) offerIdInput.value = digits;
+
+    // Любое новое ввод: устаревшие ответы и таймер больше не нужны.
+    offerSearchSeq += 1;
+    clearTimeout(offerSearchTimer);
+    if (offerSearchController) {
+      offerSearchController.abort();
+      offerSearchController = null;
+    }
+
+    if (!digits) {
+      resetOfferSearch();
+      return;
+    }
+
+    setOfferHint('Ищем оффер…');
+    offerSearchTimer = setTimeout(() => searchOffer(digits), 300);
+  });
+
+  // Кнопка очистки у <input type="search">.
+  offerIdInput.addEventListener('search', () => {
+    if (!offerIdInput.value) {
+      offerSearchSeq += 1;
+      clearTimeout(offerSearchTimer);
+      if (offerSearchController) {
+        offerSearchController.abort();
+        offerSearchController = null;
+      }
+      resetOfferSearch();
+    }
+  });
+
+  streamSelect.addEventListener('change', syncDraftButtons);
+
+  addBtn.addEventListener('click', () => {
+    if (addBtn.disabled || !foundOffer) return;
+    const streamId = Number(streamSelect.value || 0);
+    if (!streamId) return;
+    draft.push({ streamId, offer: foundOffer });
+    renderTable();
+    syncDraftButtons();
+  });
+
+  function sendErrorText(status, body) {
+    if (status === 404) return detailToText(body && body.detail, 'Поток или офер не найден.');
+    if (status === 403) return detailToText(body && body.detail, 'Ключ не даёт прав на изменение потока.');
+    if (status === 502) return 'Keitaro недоступен.';
+    if (status === 0) return 'Сеть недоступна.';
+    return detailToText(body && body.detail, `Ошибка отправки (код ${status}).`);
+  }
+
+  sendBtn.addEventListener('click', async () => {
+    if (sendBtn.disabled) return;
+    const sendHadFocus = document.activeElement === sendBtn;
+    sending = true;
+    toolbar.setAttribute('aria-busy', 'true');
+    syncDraftButtons();
+    sendStatus.hidden = true;
+
+    let added = 0;
+    let failed = 0;
+    const errors = [];
+    const remaining = [];
+    // Только здесь и только POST /api/streams/{id}/offers — «Добавить» ничего не отправляет.
+    for (const item of draft) {
+      const { status, body } = await requestJson(`/api/streams/${item.streamId}/offers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ offer_id: item.offer.id }),
+      });
+      if (status === 200 && body && body.added) {
+        added += 1;
+      } else {
+        failed += 1;
+        remaining.push(item);
+        const s = streamsData.find((x) => x.id === item.streamId);
+        const name = (s && s.name) || `Поток ${item.streamId}`;
+        errors.push(`Поток ${name}: ${sendErrorText(status, body)}`);
+      }
+    }
+    draft = remaining;
+    sending = false;
+    toolbar.removeAttribute('aria-busy');
+
+    const parts = [];
+    if (errors.length) parts.push(...errors);
+    parts.push(`Добавлено: ${added}`);
+    if (failed) parts.push(`Не отправлено: ${failed}`);
+    sendStatus.textContent = parts.join(' · ');
+    sendStatus.className = 'status-line' + (errors.length ? ' error' : '');
+    sendStatus.hidden = false;
+
+    renderTable();
+    syncDraftButtons();
+
+    // Кнопка ушла в disabled при отправке — возвращаем фокус на статус, а не в «никуда».
+    if (sendHadFocus && sendBtn.disabled) {
+      sendStatus.setAttribute('tabindex', '-1');
+      sendStatus.focus();
+    }
+
+    // Обновляем данные с сервера; при сбое оставляем таблицу и черновик как есть.
+    const refreshed = await load({ refresh: true });
+    if (!refreshed) {
+      sendStatus.textContent += ' · Данные с сервера не обновились, черновик сохранён.';
+    }
+  });
+
+  async function load(opts = {}) {
+    const refresh = opts.refresh === true;
     errorState.hidden = true;
     emptyState.hidden = true;
-    tableBlock.hidden = true;
     noOffersLine.hidden = true;
-    loading.hidden = false;
+    if (!refresh) {
+      tableBlock.hidden = true;
+      loading.hidden = false;
+    }
     content.setAttribute('aria-busy', 'true');
 
     const { status, body } = await requestJson(
@@ -405,6 +675,7 @@ function initStreams() {
     content.removeAttribute('aria-busy');
 
     if (status !== 200 || !Array.isArray(body)) {
+      if (refresh) return false;
       let msg, actions;
       if (status === 409) {
         msg = 'Сначала укажите API key.';
@@ -423,10 +694,11 @@ function initStreams() {
         actions = [retryButton()];
       }
       showError(msg, actions);
-      return;
+      return false;
     }
 
     const streams = body;
+    streamsData = streams;
 
     // Уникальные offer_id → оферы параллельно; ошибка по одному не рушит остальные.
     const ids = [...new Set(streams.flatMap((s) => (Array.isArray(s.offers) ? s.offers : []).map((o) => o.offer_id)))];
@@ -436,53 +708,22 @@ function initStreams() {
         return [id, r.ok ? r.body : null];
       })
     );
-    const offers = new Map(results);
-
-    const rows = [];
-    const noOfferStreams = [];
-    for (const s of streams) {
-      const entries = Array.isArray(s.offers) ? s.offers : [];
-      if (!entries.length) {
-        noOfferStreams.push(s);
-        continue;
-      }
-      for (const entry of entries) {
-        rows.push({ stream: s, entry, offer: offers.get(entry.offer_id) ?? null });
-      }
-    }
+    offersMap = new Map(results);
 
     loading.hidden = true;
 
-    if (!rows.length) {
-      // Ни у одного потока нет оферов: сообщение + список имён потоков.
-      emptyList.replaceChildren(
-        ...streams.map((s) => {
-          const li = document.createElement('li');
-          li.textContent = s.name || `Поток ${s.id}`;
-          return li;
-        })
-      );
+    if (!streams.length) {
+      // Потоков нет вообще — прежний empty-state.
       emptyState.hidden = false;
-      return;
+      return true;
     }
 
-    caption.textContent = `Потоки и оферы кампании ${campaignId}`;
-    tbody.replaceChildren(...rows.map(makeRow));
-
-    if (noOfferStreams.length) {
-      noOffersLine.hidden = false;
-      noOffersLine.textContent =
-        'Без оферов: ' + noOfferStreams.map((s) => s.name || `Поток ${s.id}`).join(', ');
-    }
+    // Потоки есть: тулбар и таблица видны всегда, даже если оферов пока нет.
+    populateStreamSelect();
+    renderTable();
     tableBlock.hidden = false;
+    return true;
   }
 
   load();
-}
-
-/* ----------------------------------- Точка входа ---------------------------------- */
-
-switch (document.body.dataset.page) {
-  case 'home': initHome(); break;
-  case 'streams': initStreams(); break;
 }
