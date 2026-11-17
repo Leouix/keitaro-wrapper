@@ -198,8 +198,9 @@ td em { color: var(--error); font-style: normal; }
 }
 .draft-count { color: var(--muted); font-size: 0.875rem; }
 
-/* Несохранённый черновик: карточка, форма и поля ввода ID оффера подсвечены.
-   Класс has-draft ставит app.js, только пока в черновике есть добавленные оферы. */
+/* Несохранённые изменения (черновик добавления + отложенные удаление/возврат):
+   карточка, форма и поля ввода ID оффера подсвечены.
+   Класс has-draft ставит app.js, только пока есть ожидающие изменения. */
 .card.has-draft { background-color: #ffdbc287; }
 .card.has-draft .offer-form { background-color: #e8c9b46b; }
 .card.has-draft .offer-form input { background-color: #ffdbc287; }
@@ -254,22 +255,6 @@ td em { color: var(--error); font-style: normal; }
 
 .status-line.error { background: var(--error-bg); color: var(--error); }
 
-/* Пометка офера, добавленного в локальный черновик (на сервер ещё не ушёл). */
-.draft-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 8px;
-  border: 1px solid var(--warn-border);
-  border-radius: 999px;
-  background: var(--warn-bg);
-  color: var(--warn);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  vertical-align: 1px;
-}
-
 /* Компактные кнопки в колонке «Действие»: не ломают высоту строки и не переносятся. */
 .btn-sm {
   padding: 4px 10px;
@@ -285,6 +270,26 @@ td em { color: var(--error); font-style: normal; }
 /* Архивные строки: приглушены, после живых строк той же таблицы. */
 .archived-row { background: #f8fafc; }
 .archived-row td { color: var(--muted); }
+
+/* Ожидающая строка (pending remove / pending add): жёлтый фон, как у черновика.
+   Снимается кнопкой «Отменить» или «Отправить в Кейтаро». */
+tr.pending-row { background-color: #ffdbc287; }
+
+/* Бейдж ожидающего изменения: «к удалению», «вернётся в поток», «черновик». */
+.pending-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--warn-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--warn);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: 1px;
+}
 
 .archived-badge {
   display: inline-block;

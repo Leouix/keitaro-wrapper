@@ -320,15 +320,17 @@ function initStreams() {
 
   let streamsData = [];      // потоки с сервера (последний load())
   let offersMap = new Map(); // offer_id -> тело офера
-  let draft = [];            // [{ streamId, offer }] — локальный черновик
-  let archiveData = [];      // архив удалённых оферов по потокам (локальные данные обёртки)
+  let archiveData = [];      // архив оферов, реально удалённых в Keitaro
+  // Отложенные изменения кампании — зеркало GET .../streams/pending:
+  // [{ stream_id, offer_id, action: 'add' | 'remove', created_at }].
+  // Клики «Удалить»/«Bring Back»/«Отменить»/«Добавить» меняют только его
+  // (через PUT .../pending); в Keitaro ходит лишь «Отправить в Кейтаро».
+  let pending = [];
   let sending = false;
   // Запрос по потоку в полёте: блокируем кнопки только этого потока.
   const busyStreams = new Set();
   // Текст ошибки под таблицей конкретного потока (role=status).
   const streamErrors = new Map();
-  // Потоки, у которых доли пересчитаны локально (после удаления), а не взяты с сервера.
-  const recalcShares = new Set();
 
   // Живой поиск офера — своё состояние (таймер/отмена/найденный офер) у каждого потока.
   const searchState = new Map();
@@ -340,6 +342,35 @@ function initStreams() {
     }
     return st;
   };
+
+  /* --- Отложенные изменения (pending): локальная модель + PUT .../pending --- */
+
+  function pendingForStream(streamId) {
+    return pending.filter((p) => p.stream_id === streamId);
+  }
+
+  function replacePendingForStream(streamId, rows) {
+    pending = [...pending.filter((p) => p.stream_id !== streamId), ...rows];
+  }
+
+  /** Полный набор ожидающих изменений потока — тело PUT .../pending. */
+  function pendingBody(streamId) {
+    const rows = pendingForStream(streamId);
+    return {
+      add: rows.filter((p) => p.action === 'add').map((p) => p.offer_id),
+      remove: rows.filter((p) => p.action === 'remove').map((p) => p.offer_id),
+    };
+  }
+
+  /** PUT .../streams/{sid}/pending — единственная запись при кликах.
+   *  Заменяет набор ожидающих изменений потока целиком; в Keitaro не ходит. */
+  async function putPending(streamId) {
+    return requestJson(`/api/campaigns/${campaignId}/streams/${streamId}/pending`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(pendingBody(streamId)),
+    });
+  }
 
   function showError(msg, actions = []) {
     errorText.textContent = msg;
@@ -380,9 +411,18 @@ function initStreams() {
     return (s && s.name) || `Поток ${s.id}`;
   }
 
-  function makeRow({ stream, entry, offer, share, isDraft, isArchived, reason }) {
+  /** Бейдж ожидающего изменения («к удалению» / «вернётся в поток» / «черновик»). */
+  function makeBadge(text) {
+    const badge = document.createElement('span');
+    badge.className = 'pending-badge';
+    badge.textContent = text;
+    return badge;
+  }
+
+  function makeRow({ stream, entry, offer, share, isArchived, reason, pendingAction }) {
     const tr = document.createElement('tr');
     if (isArchived) tr.className = 'archived-row';
+    else if (pendingAction) tr.className = 'pending-row';
 
     const tdStream = document.createElement('td');
     // Имя потока не переносится: «Flow 1» должно оставаться одной строкой.
@@ -408,11 +448,13 @@ function initStreams() {
       em.textContent = 'не удалось загрузить офер';
       tdOffer.appendChild(em);
     }
-    if (isDraft) {
-      const badge = document.createElement('span');
-      badge.className = 'draft-badge';
-      badge.textContent = 'черновик';
-      tdOffer.append(' ', badge);
+    if (pendingAction === 'remove') {
+      tdOffer.append(' ', makeBadge('к удалению'));
+    } else if (pendingAction === 'add') {
+      const fromArchive = stream != null && archiveData.some(
+        (a) => a.stream_id === stream.id && a.offer_id === entry.offer_id
+      );
+      tdOffer.append(' ', makeBadge(fromArchive ? 'вернётся в поток' : 'черновик'));
     }
 
     const tdState = document.createElement('td');
@@ -431,43 +473,59 @@ function initStreams() {
 
     const tdAction = document.createElement('td');
     tdAction.className = 'nowrap';
-    tdAction.appendChild(makeActionCell({ stream, entry, isDraft, isArchived }));
+    tdAction.appendChild(makeActionCell({ stream, entry, isArchived, pendingAction }));
 
     tr.append(tdOffer, tdShare, tdState, tdStream, tdPayout, tdAction);
     return tr;
   }
 
-  /** Кнопка колонки «Действие»: живая строка — «Удалить», черновик — «Убрать»,
-   *  архивная — «Bring Back». Пока по потоку идёт запрос, кнопки отключены. */
-  function makeActionCell({ stream, entry, isDraft, isArchived }) {
+  /** Кнопка колонки «Действие»: живая строка — «Удалить», ожидающая —
+   *  «Отменить», архивная — «Bring Back». Пока по потоку идёт запрос или
+   *  идёт отправка, кнопки отключены. */
+  function makeActionCell({ stream, entry, isArchived, pendingAction }) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'btn btn-sm ' + (isArchived || isDraft ? 'btn-secondary' : 'btn-danger');
+    btn.className = 'btn btn-sm ' + (pendingAction || isArchived ? 'btn-secondary' : 'btn-danger');
     const streamId = stream ? stream.id : null;
-    if (isArchived) {
+    btn.dataset.streamId = streamId == null ? '' : String(streamId);
+    btn.dataset.offerId = String(entry.offer_id);
+    const disabled = !streamId || sending || busyStreams.has(streamId);
+    if (pendingAction) {
+      btn.textContent = 'Отменить';
+      btn.setAttribute('aria-label',
+        `Отменить отложенное изменение офера #${entry.offer_id} в потоке ${streamName(stream)}`);
+      btn.disabled = disabled;
+      btn.addEventListener('click', () => cancelPendingChange(stream, entry.offer_id));
+    } else if (isArchived) {
       btn.textContent = 'Bring Back';
       btn.setAttribute('aria-label', `Вернуть офер #${entry.offer_id} в поток ${streamName(stream)}`);
-      btn.disabled = !streamId || busyStreams.has(streamId);
+      btn.disabled = disabled;
       btn.addEventListener('click', () => bringBackOffer(stream, entry));
-    } else if (isDraft) {
-      btn.textContent = 'Убрать';
-      btn.setAttribute('aria-label', `Убрать офер #${entry.offer_id} из черновика потока ${streamName(stream)}`);
-      btn.addEventListener('click', () => {
-        if (!streamId) return;
-        draft = draft.filter((d) => !(d.streamId === streamId && d.offer.id === entry.offer_id));
-        renderStreams();
-      });
     } else {
       btn.textContent = 'Удалить';
       btn.setAttribute('aria-label', `Удалить офер #${entry.offer_id} из потока ${streamName(stream)}`);
-      btn.disabled = !streamId || busyStreams.has(streamId);
+      btn.disabled = disabled;
       btn.addEventListener('click', () => deleteOffer(stream, entry));
     }
     return btn;
   }
 
-  /** Таблица одного потока: данные сервера + локальный черновик и архив этого потока. */
-  function makeStreamTable(s, entries, streamDraft, streamArchive) {
+  /** После перерисовки вернуть фокус кнопке этой строки — сама кнопка
+   *  пересоздаётся, и без этого фокус улетал бы на body. */
+  function focusRowButton(streamId, offerId) {
+    const btn = document.querySelector(
+      `button[data-stream-id="${streamId}"][data-offer-id="${offerId}"]`
+    );
+    if (btn) btn.focus();
+  }
+
+  /** Таблица одного потока. Итоговый набор = живые оферы без pending-remove
+   *  плюс pending-add (черновик и «вернётся в поток»). Пока у потока есть
+   *  ожидающие изменения, доли пересчитаны локально: base = floor(100/n),
+   *  остаток добирается первым строкам итогового набора (3 офера = 34/33/33).
+   *  Строка с pending-remove остаётся на своём месте, её доля — «—».
+   *  Архивные строки в пересчёте не участвуют и не дублируют pending-add. */
+  function makeStreamTable(s) {
     const wrap = document.createElement('div');
     wrap.className = 'table-wrap';
     const table = document.createElement('table');
@@ -485,35 +543,50 @@ function initStreams() {
     }
     thead.appendChild(headRow);
 
-    // Доли: по умолчанию — как прислал сервер. После добавления в черновик или
-    // локального удаления пересчитываем: base = floor(100 / n), r = 100 % n,
-    // первым r строкам (в порядке сервера) base + 1 (3 офера = 34/33/33).
-    // Архивные строки в пересчёте не участвуют.
+    const entries = Array.isArray(s.offers) ? s.offers : [];
+    const streamPending = pendingForStream(s.id);
+    const removes = new Set(
+      streamPending.filter((p) => p.action === 'remove').map((p) => p.offer_id)
+    );
+    const adds = streamPending.filter((p) => p.action === 'add');
+    const streamArchive = archiveData.filter(
+      (a) => a.stream_id === s.id && !adds.some((p) => p.offer_id === a.offer_id)
+    );
+
     const rows = [];
-    const total = entries.length + streamDraft.length;
-    const recalc = total > 0 && (streamDraft.length > 0 || recalcShares.has(s.id));
+    const liveCount = entries.filter((e) => !removes.has(e.offer_id)).length;
+    const total = liveCount + adds.length;
+    const recalc = streamPending.length > 0 && total > 0;
     let base = 0, rem = 0;
     if (recalc) {
       base = Math.floor(100 / total);
       rem = 100 % total;
     }
-    const shareAt = (i) => (recalc ? (i < rem ? base + 1 : base) : null);
-    entries.forEach((entry, i) => {
+    const shareAt = (i) => (i < rem ? base + 1 : base);
+
+    let idx = 0;
+    entries.forEach((entry) => {
+      const isPendingRemove = removes.has(entry.offer_id);
       rows.push({
         stream: s,
         entry,
         offer: offersMap.get(entry.offer_id) ?? null,
-        share: recalc ? shareAt(i) : (entry.share == null ? null : entry.share),
-        isDraft: false,
+        share: isPendingRemove
+          ? null
+          : (recalc ? shareAt(idx++) : (entry.share == null ? null : entry.share)),
+        pendingAction: isPendingRemove ? 'remove' : null,
       });
     });
-    streamDraft.forEach((d, j) => {
+    adds.forEach((a) => {
+      const archEntry = archiveData.find(
+        (x) => x.stream_id === s.id && x.offer_id === a.offer_id
+      ) || null;
       rows.push({
         stream: s,
-        entry: { offer_id: d.offer.id },
-        offer: d.offer,
-        share: recalc ? shareAt(entries.length + j) : null,
-        isDraft: true,
+        entry: { offer_id: a.offer_id, state: archEntry && archEntry.state },
+        offer: offersMap.get(a.offer_id) ?? null,
+        share: recalc ? shareAt(idx++) : null,
+        pendingAction: 'add',
       });
     });
     // Архивные строки идут после живых; их поле «Доля» всегда прочерчено.
@@ -538,7 +611,7 @@ function initStreams() {
   function isDuplicate(streamId, offerId) {
     const s = streamsData.find((x) => x.id === streamId);
     if (s && Array.isArray(s.offers) && s.offers.some((o) => o.offer_id === offerId)) return true;
-    return draft.some((d) => d.streamId === streamId && d.offer.id === offerId);
+    return pending.some((p) => p.stream_id === streamId && p.offer_id === offerId);
   }
 
   function setHint(hintEl, text, kind) {
@@ -557,24 +630,30 @@ function initStreams() {
     addBtn.disabled = sending || busyStreams.has(streamId) || !st.found || duplicate;
     addBtn.title = sending || busyStreams.has(streamId) ? 'Идёт запрос…'
       : !st.found ? 'Сначала найдите офер по ID'
-      : duplicate ? 'Этот офер уже есть в этом потоке или в черновике'
-      : 'Добавляется только в локальный черновик — до «Отправить в Кейтаро» ничего не уходит на сервер';
+      : duplicate ? 'Этот офер уже есть в этом потоке или уже помечен как изменение'
+      : 'Помечается как отложенное добавление — уйдёт в Keitaro по «Отправить в Кейтаро»';
   }
 
   function syncSend() {
-    sendBtn.disabled = sending || draft.length === 0;
+    sendBtn.disabled = sending || pending.length === 0;
     sendBtn.title = sending ? 'Идёт отправка…'
-      : draft.length === 0 ? 'Сначала добавьте офер в черновик кнопкой «Добавить»'
+      : pending.length === 0 ? 'Нет отложенных изменений'
       : '';
-    const n = draft.length;
-    draftCount.textContent = n
-      ? `Черновик: ${n} ${plural(n, 'офер', 'офера', 'оферов')}`
-      : 'Черновик пуст';
+    const adds = pending.filter((p) => p.action === 'add').length;
+    const removes = pending.length - adds;
+    if (!pending.length) {
+      draftCount.textContent = 'Изменений нет';
+    } else {
+      const parts = [];
+      if (adds) parts.push(`+${adds}`);
+      if (removes) parts.push(`−${removes}`);
+      draftCount.textContent = `Изменений: ${parts.join(' / ')}`;
+    }
   }
 
   function renderStreams() {
     // Сначала потоки с офферами с сервера, пустые — внизу; внутри групп порядок
-    // сервера сохраняется (stable sort). Локальный черновик порядок не двигает:
+    // сервера сохраняется (stable sort). Отложенные изменения порядок не двигают:
     // иначе секция прыгает наверх, пока в неё добавляют офер.
     const withOffers = new Set(
       streamsData
@@ -586,14 +665,14 @@ function initStreams() {
     );
     streamsList.replaceChildren(...sorted.map(renderStreamSection));
     syncSend();
-    syncDraftHighlight();
+    syncPendingHighlight();
   }
 
-  /** Подсветка несохранённого черновика: только когда в черновике есть оферы.
-   *  Введённый, но ещё не добавленный ID черновиком не считается. */
-  function syncDraftHighlight() {
+  /** Подсветка несохранённых изменений: пока есть хоть одно ожидающее.
+   *  Введённый, но ещё не добавленный ID изменением не считается. */
+  function syncPendingHighlight() {
     const card = document.querySelector('main.card');
-    if (card) card.classList.toggle('has-draft', draft.length > 0);
+    if (card) card.classList.toggle('has-draft', pending.length > 0);
   }
 
   function renderStreamSection(s) {
@@ -609,16 +688,19 @@ function initStreams() {
     section.appendChild(h2);
 
     const entries = Array.isArray(s.offers) ? s.offers : [];
-    const streamDraft = draft.filter((d) => d.streamId === s.id);
-    const streamArchive = archiveData.filter((a) => a.stream_id === s.id);
+    const streamPending = pendingForStream(s.id);
+    const streamArchive = archiveData.filter(
+      (a) => a.stream_id === s.id
+        && !streamPending.some((p) => p.action === 'add' && p.offer_id === a.offer_id)
+    );
 
-    if (!entries.length && !streamDraft.length && !streamArchive.length) {
+    if (!entries.length && !streamPending.length && !streamArchive.length) {
       const p = document.createElement('p');
       p.className = 'no-offers';
       p.textContent = 'Без оферов';
       section.appendChild(p);
     } else {
-      section.appendChild(makeStreamTable(s, entries, streamDraft, streamArchive));
+      section.appendChild(makeStreamTable(s));
     }
 
     // Ошибка последней операции по этому потоку — под таблицей, статусом.
@@ -733,14 +815,36 @@ function initStreams() {
       if (!input.value) resetSearch();
     });
 
-    addBtn.addEventListener('click', () => {
-      if (addBtn.disabled || !st.found) return;
-      draft.push({ streamId, offer: st.found });
-      // Поле очищается, найденный офер «забывается», фокус остаётся в поле.
+    /** «Добавить»: офер помечается как отложенное добавление (pending add)
+     *  и запоминается через PUT .../pending. В Keitaro не ходим — офер
+     *  появится в потоке только по «Отправить в Кейтаро». */
+    addBtn.addEventListener('click', async () => {
+      if (addBtn.disabled || !st.found || sending) return;
+      const offer = st.found;
+
+      busyStreams.add(streamId);
+      // Поле очищается, найденный офер «забывается»; строка появится после ререндера.
       st.found = null;
       input.value = '';
       setHint(hint, '');
+      pending = [...pending, { stream_id: streamId, offer_id: offer.id, action: 'add', created_at: null }];
       renderStreams();
+      focusRowButton(streamId, offer.id);
+
+      const { status, body } = await putPending(streamId);
+      if (status === 200 && body && Array.isArray(body.pending)) {
+        replacePendingForStream(streamId, body.pending);
+      } else {
+        pending = pending.filter(
+          (p) => !(p.stream_id === streamId && p.offer_id === offer.id && p.action === 'add')
+        );
+        streamErrors.set(streamId, pendingChangeErrorText(status, body, 'Не удалось пометить офер к добавлению.'));
+      }
+
+      busyStreams.delete(streamId);
+      renderStreams();
+
+      // Поле пересоздаётся вместе с секцией — возвращаем фокус в него.
       const fresh = document.getElementById(`offer-id-${streamId}`);
       if (fresh) fresh.focus();
     });
@@ -797,57 +901,20 @@ function initStreams() {
     syncStream(streamId);
   }
 
-  function sendErrorText(status, body) {
-    if (status === 404) return detailToText(body && body.detail, 'Поток или офер не найден.');
-    if (status === 403) return detailToText(body && body.detail, 'Ключ не даёт прав на изменение потока.');
-    if (status === 409) return detailToText(body && body.detail, 'Поток не принимает оферы.');
+  function applyErrorText(status, body) {
+    if (status === 404) return detailToText(body && body.detail, 'Поток или офер не найден в Keitaro.');
+    if (status === 409) return detailToText(body && body.detail, 'Поток не принимает оферы или остался бы без оферов.');
     if (status === 502) return 'Keitaro недоступен.';
     if (status === 0) return 'Сеть недоступна.';
     return detailToText(body && body.detail, `Ошибка отправки (код ${status}).`);
   }
 
-  function deleteErrorText(status, body) {
-    if (status === 403) return detailToText(body && body.detail, 'Ключ не даёт прав на изменение потока.');
-    if (status === 404) return detailToText(body && body.detail, 'Офер не найден.');
-    if (status === 409) return detailToText(body && body.detail, 'Нельзя удалить единственный офер потока.');
-    if (status === 502) return 'Keitaro недоступен.';
-    if (status === 0) return 'Сеть недоступна.';
-    return detailToText(body && body.detail, `Не удалось удалить офер (код ${status}).`);
-  }
-
-  function restoreErrorText(status, body) {
-    if (status === 403) return detailToText(body && body.detail, 'Ключ не даёт прав на изменение потока.');
-    if (status === 404) return detailToText(body && body.detail, 'Поток или офер не найден.');
-    if (status === 409) return detailToText(body && body.detail, 'Поток не принимает оферы.');
-    if (status === 502) return 'Keitaro недоступен.';
-    if (status === 0) return 'Сеть недоступна.';
-    return detailToText(body && body.detail, `Не удалось вернуть офер (код ${status}).`);
-  }
-
-  /** Снимок состояния перед оптимистичной правкой: на ошибке откатываем всё назад. */
-  function snapshotState(streamId) {
-    return {
-      streams: JSON.parse(JSON.stringify(streamsData)),
-      archive: JSON.parse(JSON.stringify(archiveData)),
-      draft: JSON.parse(JSON.stringify(draft)),
-      hadRecalc: recalcShares.has(streamId),
-    };
-  }
-
-  function restoreState(snap, streamId) {
-    streamsData = snap.streams;
-    archiveData = snap.archive;
-    draft = snap.draft;
-    if (snap.hadRecalc) recalcShares.add(streamId);
-    else recalcShares.delete(streamId);
-  }
-
-  /** Свежий архив из обёртки (локальные данные, ключ не нужен). */
-  async function refreshArchive() {
-    const { status, body } = await requestJson(`/api/campaigns/${campaignId}/streams/archive`, {
-      headers: { Accept: 'application/json' },
-    });
-    if (status === 200 && body && Array.isArray(body.archived)) archiveData = body.archived;
+  function pendingChangeErrorText(status, body, fallback) {
+    if (status === 0) return 'Сеть недоступна, попробуйте ещё раз.';
+    // 404 у PUT/GET pending бывает только на старом бэкенде без pending-роутов.
+    if (status === 404) return 'Сервер не поддерживает отложенные изменения — нужен бэкенд с коммитом 0e8dc9b.';
+    if (status === 400) return detailToText(body && body.detail, fallback);
+    return detailToText(body && body.detail, `${fallback} (код ${status}).`);
   }
 
   function replaceStream(streamId, freshStream) {
@@ -855,90 +922,115 @@ function initStreams() {
     if (idx >= 0 && freshStream) streamsData[idx] = freshStream;
   }
 
-  /** Удаление офера из потока: строка исчезает сразу, доли пересчитываются,
-   *  затем DELETE в обёртку; на ошибку — откат и текст под таблицей потока. */
+  /** Свежий архив из обёртки (локальные данные, ключ не нужен). */
+  async function refreshArchive() {
+    const { status, body } = await requestJson(`/api/campaigns/${campaignId}/streams/archive`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (status === 200 && body && Array.isArray(body.archived)) {
+      archiveData = body.archived;
+      return true;
+    }
+    return false;
+  }
+
+  /** «Удалить» у живого офера: строка остаётся на месте, фон жёлтый,
+   *  бейдж «к удалению», доля «—», остальные доли пересчитаны. Единственный
+   *  запрос — PUT .../pending; в Keitaro ничего не уходит до «Отправить». */
   async function deleteOffer(stream, entry) {
     const streamId = stream.id;
     const offerId = entry.offer_id;
-    if (!streamId || busyStreams.has(streamId)) return;
+    if (!streamId || sending || busyStreams.has(streamId)) return;
 
-    const snap = snapshotState(streamId);
+    // Последний живой офер удалять нельзя (Keitaro пустой поток не принимает).
+    // Отложенное добавление оставляет потоку итоговый офер — тогда можно.
+    const entries = Array.isArray(stream.offers) ? stream.offers : [];
+    const removes = new Set(
+      pendingForStream(streamId).filter((p) => p.action === 'remove').map((p) => p.offer_id)
+    );
+    const liveCount = entries.filter((e) => !removes.has(e.offer_id)).length;
+    if (liveCount <= 1 && !pendingForStream(streamId).some((p) => p.action === 'add')) {
+      streamErrors.set(streamId, 'Нельзя удалить единственный офер потока.');
+      renderStreams();
+      return;
+    }
+
     busyStreams.add(streamId);
     streamErrors.delete(streamId);
-    recalcShares.add(streamId);
-
-    // Оптимистично: убираем офер из локальной модели и переносим в архив.
-    stream.offers = (Array.isArray(stream.offers) ? stream.offers : []).filter((o) => o.offer_id !== offerId);
-    const offer = offersMap.get(offerId) ?? null;
-    archiveData = [
-      ...archiveData.filter((a) => !(a.stream_id === streamId && a.offer_id === offerId)),
-      {
-        stream_id: streamId,
-        offer_id: offerId,
-        share: entry.share == null ? null : entry.share,
-        state: entry.state || (offer && offer.state) || null,
-        archived_at: new Date().toISOString(),
-        reason: 'user',
-      },
-    ];
+    pending = [...pending, { stream_id: streamId, offer_id: offerId, action: 'remove', created_at: null }];
     renderStreams();
+    focusRowButton(streamId, offerId);
 
-    const { status, body } = await requestJson(`/api/streams/${streamId}/offers/${offerId}`, {
-      method: 'DELETE',
-      headers: { Accept: 'application/json' },
-    });
-
-    if (status === 200 && body && body.stream) {
-      replaceStream(streamId, body.stream);
-      // Локальную архивную запись убираем — серверный список придёт из перезапроса.
-      archiveData = archiveData.filter((a) => !(a.stream_id === streamId && a.offer_id === offerId));
-      await refreshArchive();
+    const { status, body } = await putPending(streamId);
+    if (status === 200 && body && Array.isArray(body.pending)) {
+      replacePendingForStream(streamId, body.pending);
     } else {
-      restoreState(snap, streamId);
-      streamErrors.set(streamId, deleteErrorText(status, body));
+      pending = pending.filter(
+        (p) => !(p.stream_id === streamId && p.offer_id === offerId && p.action === 'remove')
+      );
+      streamErrors.set(streamId, pendingChangeErrorText(status, body, 'Не удалось пометить офер к удалению.'));
     }
 
     busyStreams.delete(streamId);
     renderStreams();
+    focusRowButton(streamId, offerId);
   }
 
-  /** Возврат офера в поток тем же POST /streams/{id}/offers, что и черновик. */
+  /** «Bring Back» у архивного офера: строка жёлтая, бейдж «вернётся в поток»,
+   *  её доля участвует в пересчёте как живая. Единственный запрос —
+   *  PUT .../pending с add; в Keitaro не ходим до «Отправить». */
   async function bringBackOffer(stream, entry) {
     const streamId = stream.id;
     const offerId = entry.offer_id;
-    if (!streamId || busyStreams.has(streamId)) return;
+    if (!streamId || sending || busyStreams.has(streamId)) return;
 
-    const snap = snapshotState(streamId);
     busyStreams.add(streamId);
     streamErrors.delete(streamId);
-
-    // Оптимистично: архивная строка исчезает сразу.
-    archiveData = archiveData.filter((a) => !(a.stream_id === streamId && a.offer_id === offerId));
+    pending = [...pending, { stream_id: streamId, offer_id: offerId, action: 'add', created_at: null }];
     renderStreams();
+    focusRowButton(streamId, offerId);
 
-    const { status, body } = await requestJson(`/api/streams/${streamId}/offers`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ offer_id: offerId }),
-    });
-
-    if (status === 200 && body && body.stream && (body.added || body.already)) {
-      replaceStream(streamId, body.stream);
-      // Офер вернулся из архива: его деталей могло не быть в offersMap
-      // (архивный id не попадал в живых оферов при load()). Точечный запрос
-      // без перезагрузки страницы; ошибка — null, без падения.
-      if (!offersMap.get(offerId)) {
-        const r = await requestJson(`/api/offers/${offerId}`, { headers: { Accept: 'application/json' } });
-        offersMap.set(offerId, r.ok ? r.body : null);
-      }
-      await refreshArchive();
+    const { status, body } = await putPending(streamId);
+    if (status === 200 && body && Array.isArray(body.pending)) {
+      replacePendingForStream(streamId, body.pending);
     } else {
-      restoreState(snap, streamId);
-      streamErrors.set(streamId, restoreErrorText(status, body));
+      pending = pending.filter(
+        (p) => !(p.stream_id === streamId && p.offer_id === offerId && p.action === 'add')
+      );
+      streamErrors.set(streamId, pendingChangeErrorText(status, body, 'Не удалось пометить офер к возврату.'));
     }
 
     busyStreams.delete(streamId);
     renderStreams();
+    focusRowButton(streamId, offerId);
+  }
+
+  /** «Отменить» у ожидающей строки: снимаем отметку (PUT pending уже без
+   *  этого офера) и возвращаем строке исходный вид и доли. Без запросов
+   *  в Keitaro. */
+  async function cancelPendingChange(stream, offerId) {
+    const streamId = stream.id;
+    if (!streamId || sending || busyStreams.has(streamId)) return;
+    const row = pending.find((p) => p.stream_id === streamId && p.offer_id === offerId);
+    if (!row) return;
+
+    busyStreams.add(streamId);
+    streamErrors.delete(streamId);
+    pending = pending.filter((p) => p !== row);
+    renderStreams();
+    focusRowButton(streamId, offerId);
+
+    const { status, body } = await putPending(streamId);
+    if (status === 200 && body && Array.isArray(body.pending)) {
+      replacePendingForStream(streamId, body.pending);
+    } else {
+      pending = [...pending, row];
+      streamErrors.set(streamId, pendingChangeErrorText(status, body, 'Не удалось отменить изменение.'));
+    }
+
+    busyStreams.delete(streamId);
+    renderStreams();
+    focusRowButton(streamId, offerId);
   }
 
   sendBtn.addEventListener('click', async () => {
@@ -950,33 +1042,68 @@ function initStreams() {
     for (const s of streamsData) syncStream(s.id);
     sendStatus.hidden = true;
 
-    let added = 0;
+    // Потоки с ожидающими изменениями, в порядке списка; поток вне списка
+    // (редкий случай) — в конец, apply проверяет кампанию по самому потоку.
+    const targets = streamsData
+      .filter((s) => pendingForStream(s.id).length > 0)
+      .map((s) => s.id);
+    const known = new Set(targets);
+    for (const sid of new Set(pending.map((p) => p.stream_id))) {
+      if (!known.has(sid)) targets.push(sid);
+    }
+
+    let applied = 0;
     let failed = 0;
     const errors = [];
-    const remaining = [];
-    // Только здесь и только последовательные POST /api/streams/{id}/offers —
-    // «Добавить» ничего не отправляет.
-    for (const item of draft) {
-      const { status, body } = await requestJson(`/api/streams/${item.streamId}/offers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ offer_id: item.offer.id }),
-      });
-      if (status === 200 && body && body.added) {
-        added += 1;
+    // Только здесь и только последовательные POST .../apply — по одному
+    // на поток, один PUT в Keitaro внутри каждого.
+    for (const sid of targets) {
+      busyStreams.add(sid);
+      const { status, body } = await requestJson(
+        `/api/campaigns/${campaignId}/streams/${sid}/apply`,
+        { method: 'POST', headers: { Accept: 'application/json' } }
+      );
+      if (status === 200 && body && body.applied) {
+        // Актуальный поток — из ответа; его доли уже пересчитаны Keitaro.
+        if (body.stream) replaceStream(sid, body.stream);
+        const addedIds = Array.isArray(body.added) ? body.added : [];
+        const removedIds = Array.isArray(body.removed) ? body.removed : [];
+        // Локальная бухгалтерия архива: возвращённые снимаются с архива,
+        // удалённые попадают в него (до сверки с refreshArchive).
+        archiveData = archiveData.filter(
+          (a) => !(a.stream_id === sid && addedIds.includes(a.offer_id))
+        );
+        const nowIso = new Date().toISOString();
+        for (const oid of removedIds) {
+          const offer = offersMap.get(oid) ?? null;
+          archiveData = [...archiveData, {
+            stream_id: sid,
+            offer_id: oid,
+            share: null,
+            state: (offer && offer.state) || null,
+            archived_at: nowIso,
+            reason: 'user',
+          }];
+        }
+        replacePendingForStream(sid, []);
+        streamErrors.delete(sid);
+        applied += 1;
       } else {
+        // Ошибка одного потока: его изменения остаются как были, идём дальше.
         failed += 1;
-        remaining.push(item);
-        errors.push(`Поток ${streamName(streamsData.find((x) => x.id === item.streamId) || { id: item.streamId })}: ${sendErrorText(status, body)}`);
+        const text = applyErrorText(status, body);
+        streamErrors.set(sid, text);
+        errors.push(`Поток ${streamName(streamsData.find((x) => x.id === sid) || { id: sid })}: ${text}`);
       }
+      busyStreams.delete(sid);
+      renderStreams();
     }
-    draft = remaining;
     sending = false;
     tableBlock.removeAttribute('aria-busy');
 
     const parts = [];
     if (errors.length) parts.push(...errors);
-    parts.push(`Добавлено: ${added}`);
+    parts.push(`Потоков обновлено: ${applied}`);
     if (failed) parts.push(`Не отправлено: ${failed}`);
     sendStatus.textContent = parts.join(' · ');
     sendStatus.className = 'status-line' + (errors.length ? ' error' : '');
@@ -990,10 +1117,10 @@ function initStreams() {
       sendStatus.focus();
     }
 
-    // Обновляем данные с сервера; при сбое оставляем таблицу и черновик как есть.
-    const refreshed = await load({ refresh: true });
-    if (!refreshed) {
-      sendStatus.textContent += ' · Данные с сервера не обновились, черновик сохранён.';
+    // Архив — локальные данные обёртки; после успешных применений сверяем.
+    if (applied) {
+      await refreshArchive();
+      renderStreams();
     }
   });
 
@@ -1013,7 +1140,7 @@ function initStreams() {
     // после ответа, поэтому параллельный запрос архива не видит свежую
     // архивную строку (бейдж «удалён в Keitaro» и Bring Back появлялись только
     // со второй перезагрузки). Архив — локальные данные обёртки, его ошибка
-    // не должна ломать страницу.
+    // не должна ломать страницу. Pending — тоже локальная БД, идёт следом.
     const [streamsRes, campaignRes] = await Promise.all([
       requestJson(`/api/campaigns/${campaignId}/streams`, { headers: { Accept: 'application/json' } }),
       requestJson(`/api/campaigns/${campaignId}`, { headers: { Accept: 'application/json' } }),
@@ -1027,6 +1154,18 @@ function initStreams() {
       archiveData = archiveRes.body.archived;
     } else if (!refresh) {
       archiveData = []; // ключа нет или список пуст — архива нет
+    }
+
+    // Восстановление жёлтых строк из pending: перезагрузка не воскрешает
+    // удалённые оферы и не теряет черновики. 404 = старый бэкенд без
+    // pending-роутов — считаем изменений нет.
+    const pendingRes = await requestJson(`/api/campaigns/${campaignId}/streams/pending`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (pendingRes.status === 200 && pendingRes.body && Array.isArray(pendingRes.body.pending)) {
+      pending = pendingRes.body.pending;
+    } else if (!refresh) {
+      pending = [];
     }
 
     // body.name || body.campaign?.name — stale-ответ кладёт кампанию внутрь.
@@ -1064,16 +1203,17 @@ function initStreams() {
 
     streamsData = body;
     if (!refresh) {
-      recalcShares.clear();
       streamErrors.clear();
     }
 
     // Уникальные offer_id → оферы параллельно; ошибка по одному не рушит остальные.
-    // Берём живых оферов И архив: архивная строка тоже рисует имя и выплату,
-    // иначе после Bring Back офер рисуется как «не удалось загрузить офер».
+    // Берём живых оферов, архив И отложенные добавления: строка с бейджем
+    // тоже рисует имя и выплату, иначе после перезагрузки офер из pending
+    // рисуется как «не удалось загрузить офер».
     const ids = [...new Set([
       ...streamsData.flatMap((s) => (Array.isArray(s.offers) ? s.offers : []).map((o) => o.offer_id)),
       ...archiveData.map((a) => a.offer_id),
+      ...pending.filter((p) => p.action === 'add').map((p) => p.offer_id),
     ])];
     const results = await Promise.all(
       ids.map(async (id) => {
