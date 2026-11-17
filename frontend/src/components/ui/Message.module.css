@@ -1,0 +1,55 @@
+.message {
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 0.875rem;
+  margin: 14px 0 0;
+}
+
+.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid var(--warn-border);
+}
+
+.info {
+  color: var(--muted);
+  padding: 12px 0;
+}
+
+.statusLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin: 0 0 14px;
+}
+
+/* Точка-индикатор перед текстом статуса. */
+.statusLine::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.statusError {
+  background: var(--error-bg);
+  color: var(--error);
+}

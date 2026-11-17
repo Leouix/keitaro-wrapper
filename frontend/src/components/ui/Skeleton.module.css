@@ -1,0 +1,22 @@
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--info-bg) 25%, #e9ebef 45%, var(--info-bg) 65%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s var(--ease-out) infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}

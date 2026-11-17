@@ -1,0 +1,15 @@
+.card {
+  margin-top: 32px;
+}
+
+.status {
+  margin-bottom: 16px;
+}
+
+.field {
+  margin-bottom: 20px;
+}
+
+.error {
+  margin-top: 16px;
+}

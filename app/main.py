@@ -1,8 +1,8 @@
-import re
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .db import Base, engine
 from .keitaro import KeitaroClient, KeitaroUnavailable
@@ -19,41 +19,66 @@ app.include_router(offers.router)
 app.include_router(streams.router)
 app.include_router(streams.pending_router)
 
-# Фронт — статика из web/ (файлы принадлежат Pixel, бэкенд только отдаёт их).
+# Фронтенд — собранный React (Vite): исходники в frontend/ (зона Pixel),
+# сборка лежит в web/dist/ (в git не хранится), рантайму Node не нужен.
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+DIST_DIR = WEB_DIR / "dist"
+INDEX_FILE = DIST_DIR / "index.html"
 
-# Один уровень вложенности: обычное имя файла без ведущей точки.
-# Это же отсекает .env и любые скрытые/системные файлы от раздачи.
-_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+FRONTEND_NOT_BUILT = (
+    "frontend не собран: нет web/dist/index.html (cd frontend && npm ci && npm run build)"
+)
 
 
-def _serve(name: str):
-    path = WEB_DIR / name
-    if not path.is_file():
-        raise HTTPException(404, "Static file not found")
-    return FileResponse(path)
+def _spa_page() -> FileResponse:
+    # Один и тот же index.html для всех SPA-маршрутов; no-store, чтобы после
+    # нового деплоя браузер не оставался на старой сборке.
+    if not INDEX_FILE.is_file():
+        raise HTTPException(503, FRONTEND_NOT_BUILT)
+    return FileResponse(INDEX_FILE, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/", include_in_schema=False)
 def index_page():
-    return _serve("index.html")
+    return _spa_page()
 
 
 @app.get("/campaigns", include_in_schema=False)
 def campaigns_page():
-    return _serve("campaigns.html")
+    return _spa_page()
 
 
 @app.get("/fb/campaigns/{campaign_id}/streams", include_in_schema=False)
 def streams_page(campaign_id: str):
-    return _serve("streams.html")
+    # Нечисловой campaign_id — ошибка ссылки, а не бэкенда: HTML всё равно отдаётся.
+    return _spa_page()
 
 
-@app.get("/assets/{name}", include_in_schema=False)
-def asset_file(name: str):
-    if not _ASSET_NAME.fullmatch(name):
-        raise HTTPException(404, "Static file not found")
-    return _serve(name)
+class HashedAssets(StaticFiles):
+    """Раздача web/dist/assets: имена файлов содержат хэш сборки.
+
+    Скрытые имена (.env, .keitaro_api_key, "..") не раздаются ни на одном
+    уровне вложенности; существующие файлы кэшируются бессрочно.
+    """
+
+    def lookup_path(self, path: str) -> tuple[str, object]:
+        if any(part.startswith(".") for part in path.split("/")):
+            return "", None
+        return super().lookup_path(path)
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+# check_dir=False: каталог появляется после `npm run build`, до сборки
+# любой /assets/* честно отвечает 404.
+app.mount(
+    "/assets",
+    HashedAssets(directory=str(DIST_DIR / "assets"), check_dir=False),
+    name="assets",
+)
 
 
 @app.get("/healthz")

@@ -8,3 +8,7 @@ __pycache__/
 venv/
 .pytest_cache/
 keitaro_wrapper.db
+# Логи dev-режима и временные файлы скрипта запуска.
+.dev/
+# Сборка фронтенда — артефакт, не в git (получается `npm run build`).
+web/dist/

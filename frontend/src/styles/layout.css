@@ -1,0 +1,89 @@
+/* Каркас: верхняя панель, контент до 1120px, карточка страницы. */
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+.card {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 26px 32px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Широкая карточка страницы потоков. */
+.card.wide {
+  max-width: none;
+  margin: 0;
+}
+
+.page-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.back-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  margin-left: -10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  transition:
+    background-color var(--speed) var(--ease-out),
+    color var(--speed) var(--ease-out);
+}
+
+.back-link:hover {
+  background: var(--info-bg);
+  color: var(--text);
+}
+
+.link {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.counter {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.wrap-anywhere {
+  overflow-wrap: anywhere;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 12px 10px 32px;
+  }
+
+  .card {
+    padding: 20px 14px 24px;
+  }
+
+  body {
+    font-size: 15px;
+  }
+}

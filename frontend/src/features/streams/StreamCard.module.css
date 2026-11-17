@@ -1,0 +1,95 @@
+.section {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin: 0 0 16px;
+  background: var(--card);
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 12px;
+}
+
+.meta {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.noOffers {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  margin: 12px 0 0;
+}
+
+.streamError {
+  margin: 10px 0 0;
+}
+
+/* Несохранённые изменения: янтарная подложка у формы добавления. */
+.offerForm {
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  margin-top: 14px;
+}
+
+/* Пока есть ожидающие изменения (has-draft на карточке страницы). */
+.hasDraft .offerForm {
+  background: var(--warn-bg);
+}
+
+.hasDraft .offerForm input {
+  background: var(--card);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: flex-start;
+}
+
+.searchField {
+  flex: 1 1 230px;
+  margin-bottom: 0;
+}
+
+.searchField :global(input),
+.searchField input {
+  max-width: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  /* Выравниваем кнопку по строке ввода: label 20px + отступ 6px → сдвиг 12px. */
+  margin-top: 12px;
+}
+
+@media (max-width: 560px) {
+  .section {
+    padding: 14px 10px;
+  }
+
+  .offerForm {
+    padding: 12px 10px;
+  }
+
+  .row {
+    gap: 8px;
+  }
+
+  .searchField {
+    flex: 1 1 100%;
+  }
+
+  .actions {
+    margin-top: 0;
+  }
+}

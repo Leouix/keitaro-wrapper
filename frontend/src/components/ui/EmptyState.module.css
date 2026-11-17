@@ -1,0 +1,25 @@
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+  color: var(--border-strong);
+}
+
+.title {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.text {
+  font-size: 0.875rem;
+}

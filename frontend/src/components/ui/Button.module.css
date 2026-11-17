@@ -1,0 +1,106 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--speed) var(--ease-out),
+    border-color var(--speed) var(--ease-out),
+    color var(--speed) var(--ease-out),
+    transform 120ms var(--ease-out);
+}
+
+.button:hover {
+  background: var(--row-hover);
+  border-color: var(--muted);
+}
+
+.button:active {
+  transform: scale(0.98);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.button:disabled:hover {
+  background: var(--card);
+  border-color: var(--border-strong);
+}
+
+.primary {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 0.9375rem;
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.primary:disabled:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.secondary {
+  background: var(--card);
+}
+
+/* Тихая опасная кнопка без заливки (в таблице). */
+.ghost {
+  min-width: 90px;
+  color: var(--danger);
+  background: transparent;
+  border-color: transparent;
+}
+
+.ghost:hover {
+  background: var(--error-bg);
+  border-color: transparent;
+}
+
+.ghost:disabled:hover {
+  background: transparent;
+}
+
+/* Filled красная (в подтверждении отправки). */
+.danger {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.danger:hover {
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
+}
+
+.danger:disabled:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.sm {
+  height: auto;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  border-radius: 6px;
+}

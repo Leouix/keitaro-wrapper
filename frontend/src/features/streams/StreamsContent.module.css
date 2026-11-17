@@ -1,0 +1,60 @@
+/* Страница потоков: предупреждение перед отправкой, статус, список карточек. */
+
+.errorBlock:focus {
+  outline: none;
+}
+
+.errorActions {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.sendWarning {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-md);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 0.875rem;
+}
+
+.warningText {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.warningActions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sendStatus {
+  margin: 0 0 14px;
+}
+
+.sendStatus:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.list {
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  /* Предупреждение на узком экране: кнопки в столбик на всю ширину. */
+  .warningActions {
+    flex-direction: column;
+  }
+
+  .warningActions :global(button),
+  .warningActions button {
+    justify-content: center;
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+coverage/
+.vite/
+*.local
+
+# dist коммитится (см. README), поэтому web/dist здесь НЕ игнорируется.
