@@ -45,3 +45,27 @@ class StreamOfferState(Base):
     archive_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (UniqueConstraint("stream_id", "offer_id"),)
+
+
+class StreamOfferPending(Base):
+    """Ожидающие изменения оферов потока (local-first).
+
+    Страница удаляет/возвращает офер мгновенно — только в этой таблице и
+    в пересчёте весов на своей стороне; в Keitaro изменения уходят одним
+    PUT по кнопке «Отправить в Кейтаро» (POST .../apply).
+    UNIQUE(stream_id, offer_id): у пары не может быть двух действий сразу
+    — последняя правка по оферу заменяет предыдущую (PUT pending заменяет
+    набор целиком).
+    """
+
+    __tablename__ = "stream_offer_pending"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(Integer, index=True)
+    stream_id: Mapped[int] = mapped_column(Integer, index=True)
+    offer_id: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(8))  # "add" | "remove"
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+    __table_args__ = (UniqueConstraint("stream_id", "offer_id"),)

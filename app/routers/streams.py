@@ -11,22 +11,33 @@
   ошибка записи в БД после успешного PUT не ломает ответ — логируем и
   всё равно отдаём 200;
 - POST возвращает офер из архива к жизни (archived_at=None).
+
+Страница потоков теперь работает local-first: удаление/возврат офера
+мгновенно меняют только таблицу и pending (StreamOfferPending), а в
+Keitaro уходит одним PUT по кнопке «Отправить в Кейтаро»
+(PUT .../pending + POST .../apply). Эти старые синхронные эндпоинты
+оставлены как есть для совместимости.
 """
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Path
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..keitaro import KeitaroClient, KeitaroUnavailable
-from ..models import StreamOfferState, utcnow
+from ..models import StreamOfferPending, StreamOfferState, utcnow
 from .campaigns import get_keitaro_with_key
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/streams", tags=["streams"])
+# Local-first эндпоинты: путь живёт под /api/campaigns/{cid}/streams,
+# но по коду это зона streams (в Keitaro ходит только apply).
+pending_router = APIRouter(
+    prefix="/api/campaigns/{campaign_id}/streams", tags=["streams"]
+)
 
 
 class OfferAddBody(BaseModel):
@@ -65,6 +76,7 @@ def _lift_archive(
     campaign_id,
     offer_id: int,
     entry: dict | None = None,
+    commit: bool = True,
 ) -> None:
     """Офер снова живой в потоке: архивная строка снимается (или заводится)."""
     row = (
@@ -88,7 +100,8 @@ def _lift_archive(
     row.last_seen_at = utcnow()
     row.archived_at = None
     row.archive_reason = None
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def _archive_offer(
@@ -99,6 +112,7 @@ def _archive_offer(
     offer_id: int,
     entry: dict,
     reason: str,
+    commit: bool = True,
 ) -> None:
     """Архивируем офер: последние известные share/state + причина."""
     row = (
@@ -121,7 +135,8 @@ def _archive_offer(
     row.last_seen_at = utcnow()
     row.archived_at = utcnow()
     row.archive_reason = reason
-    db.commit()
+    if commit:
+        db.commit()
 
 
 async def _get_stream_or_raise(keitaro: KeitaroClient, stream_id: int) -> dict:
@@ -152,6 +167,10 @@ async def add_offer_to_stream(
     db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
+    """Синхронное добавление офера в поток (PUT сразу в Keitaro).
+
+    Оставлен для совместимости; страница потоков теперь ходит через
+    PUT .../pending + POST .../apply (local-first)."""
     stream = await _get_stream_or_raise(keitaro, stream_id)
     _check_landings_schema(stream)
 
@@ -218,9 +237,14 @@ async def remove_offer_from_stream(
     db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
-    """Удаление офера из потока: PUT в Keitaro c пересчитанными долями,
-    при успехе — архивная строка (archive_reason="user"). Восстановить
-    офер можно POST-ом (снимает архив) или через archive-эндпоинт кампании."""
+    """Синхронное удаление офера из потока: PUT в Keitaro c пересчитанными
+    долями, при успехе — архивная строка (archive_reason="user").
+    Восстановить офер можно POST-ом (снимает архив) или через
+    archive-эндпоинт кампании.
+
+    Оставлен для совместимости; страница потоков теперь ходит через
+    PUT .../pending + POST .../apply (local-first: удаление меняет только
+    таблицу, в Keitaro уходит одним PUT по кнопке «Отправить в Кейтаро»)."""
     stream = await _get_stream_or_raise(keitaro, stream_id)
     _check_landings_schema(stream)
 
@@ -272,3 +296,269 @@ async def remove_offer_from_stream(
             offer_id,
         )
     return {"removed": True, "already": False, "stream": updated}
+
+
+# --- Local-first: ожидающие изменения + явная отправка в Keitaro --------------
+
+class PendingBody(BaseModel):
+    """Тело PUT .../pending: полный набор ожидающих действий по потоку.
+
+    Оба списка обязательны (пустой = «ожидающих нет»), extra="forbid":
+    campaign_id и прочее от клиента не принимаем. Значения — целые > 0;
+    дубли внутри списка схлопываем; один id в обоих списках — 400.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    add: list[int]
+    remove: list[int]
+
+    @field_validator("add", "remove")
+    @classmethod
+    def _positive_ids(cls, v: list[int]) -> list[int]:
+        for x in v:
+            if x <= 0:
+                raise ValueError("offer ids must be positive integers")
+        return v
+
+
+def _pending_payload(rows: list[StreamOfferPending]) -> list[dict]:
+    return [
+        {
+            "stream_id": r.stream_id,
+            "offer_id": r.offer_id,
+            "action": r.action,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@pending_router.get("/pending")
+async def get_campaign_streams_pending(
+    campaign_id: int = Path(gt=0),
+    db: Session = Depends(get_db),
+):
+    """Ожидающие изменения кампании: только локальная БД — без API-ключа
+    и без похода в Keitaro (работает и при недоступном Keitaro)."""
+    rows = (
+        db.query(StreamOfferPending)
+        .filter(StreamOfferPending.campaign_id == campaign_id)
+        .order_by(StreamOfferPending.id)
+        .all()
+    )
+    return {"pending": _pending_payload(rows)}
+
+
+@pending_router.put("/{stream_id}/pending")
+async def put_stream_pending(
+    campaign_id: int = Path(gt=0),
+    stream_id: int = Path(gt=0),
+    body: PendingBody = ...,
+    db: Session = Depends(get_db),
+):
+    """Заменить набор ожидающих изменений потока целиком (без Keitaro).
+
+    campaign_id из пути — только группировка; принадлежность потока
+    проверяется в apply (по campaign_id самого потока). Дубли внутри
+    списка схлопываются; один id в add и remove — 400.
+    """
+    add = list(dict.fromkeys(body.add))
+    remove = list(dict.fromkeys(body.remove))
+    overlap = set(add) & set(remove)
+    if overlap:
+        raise HTTPException(
+            400,
+            "Один и тот же офер не может быть одновременно в add и remove: "
+            f"{sorted(overlap)}",
+        )
+
+    db.query(StreamOfferPending).filter(
+        StreamOfferPending.stream_id == stream_id
+    ).delete()
+    for oid in add:
+        db.add(
+            StreamOfferPending(
+                campaign_id=campaign_id, stream_id=stream_id,
+                offer_id=oid, action="add",
+            )
+        )
+    for oid in remove:
+        db.add(
+            StreamOfferPending(
+                campaign_id=campaign_id, stream_id=stream_id,
+                offer_id=oid, action="remove",
+            )
+        )
+    db.commit()
+    rows = (
+        db.query(StreamOfferPending)
+        .filter(StreamOfferPending.stream_id == stream_id)
+        .order_by(StreamOfferPending.id)
+        .all()
+    )
+    return {"pending": _pending_payload(rows)}
+
+
+def _apply_pending_to_db(
+    db: Session,
+    *,
+    stream_id: int,
+    campaign_id,
+    live_by_id: dict[int, dict],
+    payload_by_id: dict[int, dict],
+    removes: list[int],
+    adds: list[int],
+) -> None:
+    """Одна транзакция: архив для remove (share/state из живого потока),
+    снятие архива для add (share из PUT-payload), очистка pending потока.
+    Ошибка — полный откат, вызывающий код решает, что отвечать."""
+    try:
+        for oid in removes:
+            entry = live_by_id.get(oid)
+            if entry is not None:
+                # Офера уже нет в Keitaro — архивировать нечего (не ошибка).
+                _archive_offer(
+                    db,
+                    stream_id=stream_id,
+                    campaign_id=campaign_id,
+                    offer_id=oid,
+                    entry=entry,
+                    reason="user",
+                    commit=False,
+                )
+        for oid in adds:
+            _lift_archive(
+                db,
+                stream_id=stream_id,
+                campaign_id=campaign_id,
+                offer_id=oid,
+                entry=payload_by_id.get(oid),
+                commit=False,
+            )
+        db.query(StreamOfferPending).filter(
+            StreamOfferPending.stream_id == stream_id
+        ).delete()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _clear_pending_quiet(db: Session, *, stream_id: int) -> None:
+    """Очистка pending для noop: ошибка записи не ломает 200-ответ."""
+    try:
+        db.query(StreamOfferPending).filter(
+            StreamOfferPending.stream_id == stream_id
+        ).delete()
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "stream_offer_pending cleanup failed: stream=%s", stream_id
+        )
+
+
+@pending_router.post("/{stream_id}/apply")
+async def apply_stream_pending(
+    campaign_id: int = Path(gt=0),
+    stream_id: int = Path(gt=0),
+    db: Session = Depends(get_db),
+    keitaro: KeitaroClient = Depends(get_keitaro_with_key),
+):
+    """Применить ожидающие изменения потока одним PUT в Keitaro.
+
+    local=final вычисляется из живого списка оферов: live минус remove
+    плюс add (уже существующие не дублируются, порядок add сохраняется).
+    final пуст -> 409 (нельзя удалить единственный офер); final == live
+    -> noop без PUT, pending очищается. Ошибка БД после успешного PUT
+    не отменяет 200 — как в синхронных эндпоинтах.
+    """
+    pending_rows = (
+        db.query(StreamOfferPending)
+        .filter(StreamOfferPending.stream_id == stream_id)
+        .order_by(StreamOfferPending.id)
+        .all()
+    )
+    removes = [r.offer_id for r in pending_rows if r.action == "remove"]
+    adds = [r.offer_id for r in pending_rows if r.action == "add"]
+
+    stream = await _get_stream_or_raise(keitaro, stream_id)
+    if int(stream.get("campaign_id") or 0) != campaign_id:
+        # campaign_id в пути — только группировка; настоящий owner потока
+        # решает, к какой кампании он относится.
+        raise HTTPException(
+            409,
+            f"Поток относится к кампании {stream.get('campaign_id')}, "
+            f"а не к {campaign_id}",
+        )
+
+    offers = list(stream.get("offers") or [])
+    live = [o.get("offer_id") for o in offers]
+    live_by_id = {o.get("offer_id"): o for o in offers}
+
+    if pending_rows and str(stream.get("schema") or "") != "landings":
+        _check_landings_schema(stream)  # 409: redirect-поток молча игнорирует offers
+
+    final_ids = [oid for oid in live if oid not in set(removes)]
+    for oid in adds:
+        if oid not in final_ids:
+            final_ids.append(oid)
+
+    if not final_ids:
+        # final пуст: PUT отвергнет поток без оферов — pending не трогаем.
+        raise HTTPException(409, "Нельзя удалить единственный офер потока")
+
+    # Каждый add должен существовать в Keitaro (404 — pending не трогаем).
+    for oid in adds:
+        try:
+            await keitaro.get_offer(oid)
+        except KeitaroUnavailable as e:
+            raise HTTPException(502, "Keitaro unavailable") from e
+        except HTTPException as e:
+            if e.status_code == 404:
+                raise HTTPException(404, "Офер не найден в Keitaro") from e
+            raise
+
+    if final_ids == live:
+        # Менять в Keitaro нечего (например, повторный apply или remove
+        # офера, которого там уже нет): очищаем pending без PUT.
+        _clear_pending_quiet(db, stream_id=stream_id)
+        return {"applied": True, "noop": True, "stream": stream}
+
+    final = [live_by_id[oid] for oid in final_ids if oid in live_by_id]
+    final += [{"offer_id": oid, "state": "active"} for oid in final_ids if oid not in live_by_id]
+    payload = reshare(final)
+    try:
+        updated = await keitaro.update_stream_offers(
+            stream_id, stream.get("campaign_id"), payload
+        )
+    except KeitaroUnavailable as e:
+        raise HTTPException(502, "Keitaro unavailable") from e
+
+    payload_by_id = {o["offer_id"]: o for o in payload}
+    added = [oid for oid in final_ids if oid not in live_by_id]
+    actually_removed = [oid for oid in removes if oid in live_by_id]
+    try:
+        _apply_pending_to_db(
+            db,
+            stream_id=stream_id,
+            campaign_id=stream.get("campaign_id"),
+            live_by_id=live_by_id,
+            payload_by_id=payload_by_id,
+            removes=removes,
+            adds=adds,
+        )
+    except Exception:
+        # PUT уже прошёл — изменения в Keitaro состоялись; ошибка локальной
+        # записи не отменяет результат (pending дочистит повторный apply).
+        logger.exception(
+            "pending apply db write failed after PUT: stream=%s", stream_id
+        )
+    return {
+        "applied": True,
+        "noop": False,
+        "stream": updated,
+        "added": added,
+        "removed": actually_removed,
+    }

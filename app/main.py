@@ -17,6 +17,7 @@ app.include_router(settings_router.router)
 app.include_router(campaigns.router)
 app.include_router(offers.router)
 app.include_router(streams.router)
+app.include_router(streams.pending_router)
 
 # Фронт — статика из web/ (файлы принадлежат Pixel, бэкенд только отдаёт их).
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
