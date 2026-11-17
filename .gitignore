@@ -1,4 +1,7 @@
 .env
+# API-ключ Keitaro, сохранённый через UI (0600, в репо не попадает).
+.keitaro_api_key
+.keitaro_api_key.tmp
 __pycache__/
 *.py[cod]
 .venv/

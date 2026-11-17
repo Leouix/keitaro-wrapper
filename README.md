@@ -34,3 +34,27 @@ pytest -q
 - `GET /healthz/keitaro` — пинг Keitaro
 - `GET /api/campaigns/by-name/{name}`
 - `GET /api/campaigns/{campaign_id}`
+- `GET /api/campaigns/{campaign_id}/streams` — потоки кампании, тело как у Keitaro;
+  только положительный int; без настроенного ключа — `409 {"detail": "API key is not configured"}`
+- `GET /api/offers/{offer_id}` — офер, тело как у Keitaro; только положительный int
+
+## Хранение API-ключа
+
+- Дефолт — `KEITARO_API_KEY` из `.env` (источник `env`).
+- Ключ, сохранённый через `POST /api/settings/api-key`, лежит в файле
+  `.keitaro_api_key` (0600) в корне проекта (источник `file`) и перекрывает .env.
+  Файл в `.gitignore`; в SQLite ключ не пишется.
+- `GET /api/settings` → `{"configured", "key_masked" ("8510…e834"), "source": "file"|"env"|null}`;
+  полный ключ не возвращается никогда.
+- `POST /api/settings/api-key` `{"api_key": "..."}`: ключ проверяется живым
+  `GET /campaigns` и сохраняется только при успехе. `400` — Keitaro отверг ключ
+  (401/403/HTML-логин), `502` — Keitaro недоступен, `422` — пустой/короткий (<16) ключ.
+- Ключ не логируется и не попадает в трейсы ошибок.
+
+## Фронтенд
+
+- `GET /` → `web/index.html`, `GET /fb/campaigns/{id}/streams` → `web/streams.html`,
+  `GET /assets/{name}` → статика из `web/` (один уровень, скрытые файлы отдаются 404).
+- Браузер ходит в Keitaro только через этот сервис, ключ в JS не попадает.
+- Файлы `web/**` — зона Pixel.
+

@@ -1,0 +1,207 @@
+/* Keitaro wrapper — единый дизайн-язык для главной и страницы потоков. */
+
+:root {
+  --bg: #f3f6fa;
+  --card: #ffffff;
+  --border: #dbe2ea;
+  --text: #1f2933;
+  --muted: #5f6b7a;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --error: #9a1c12;
+  --error-bg: #fef3f2;
+  --success: #05663a;
+  --success-bg: #ecfdf3;
+  --warn: #92400e;
+  --warn-bg: #fffbeb;
+  --warn-border: #f5d97e;
+  --row-hover: #f5f8fd;
+  --info-bg: #eef2f7;
+  --focus: #1d4ed8;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html { height: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+.card {
+  max-width: 760px;
+  margin: 40px auto 24px;
+  padding: 24px 22px 28px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+h1 { font-size: 1.35rem; margin: 0 0 4px; }
+h2 { font-size: 1.05rem; margin: 0 0 10px; }
+
+.hint { color: var(--muted); font-size: 0.875rem; margin: 0 0 16px; }
+
+.status-line {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 0.875rem;
+  margin: 0 0 14px;
+}
+
+label { display: block; font-weight: 600; margin-bottom: 6px; }
+.field { margin-bottom: 16px; }
+.field input {
+  width: 100%;
+  max-width: 420px;
+  padding: 9px 12px;
+  font-size: 1rem;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.field input[aria-invalid="true"] { border-color: var(--error); }
+
+.btn {
+  display: inline-block;
+  padding: 9px 16px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn:disabled { background: #9db8f0; border-color: #9db8f0; cursor: default; }
+
+.btn-secondary { background: var(--card); color: var(--primary); }
+.btn-secondary:hover:not(:disabled) { background: #eaf0fe; }
+
+.link { color: var(--primary); }
+a:focus-visible, button:focus-visible, input:focus-visible, [tabindex="-1"]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.message {
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.9375rem;
+  margin: 14px 0 0;
+}
+.message.error { background: var(--error-bg); color: var(--error); }
+.message.success { background: var(--success-bg); color: var(--success); }
+.message.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
+.message.info { background: var(--info-bg); color: var(--text); }
+
+.error-actions { margin-top: 12px; }
+.error-actions .btn { margin-right: 10px; }
+
+/* Страница кампаний: фильтр, счётчик, кликабельные строки. */
+.filter-row { margin-bottom: 6px; }
+.filter-row input { max-width: 420px; }
+
+.counter { color: var(--muted); font-size: 0.875rem; margin: 0 0 10px; }
+
+tr { position: relative; }
+tbody tr:hover { background: var(--row-hover); }
+
+.row-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.row-link:hover { text-decoration: underline; }
+/* Настоящая <a> растягивается на всю строку: строка кликабельна целиком,
+   включая среднюю кнопку мыши и «открыть в новой вкладке». */
+.row-link::after { content: ""; position: absolute; inset: 0; }
+/* Клавиатурный фокус виден на всей строке, а не только вокруг текста ссылки. */
+.row-link:focus-visible { outline: none; }
+.row-link:focus-visible::after {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.alias {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.divider { border: none; border-top: 1px solid var(--border); margin: 22px 0 18px; }
+
+/* Страница потоков */
+.page-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.back-link { font-size: 0.875rem; }
+
+.loading { color: var(--muted); margin: 0; }
+
+.table-wrap { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+
+caption {
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.875rem;
+  padding: 0 0 8px;
+}
+
+th, td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  border-bottom: 2px solid var(--border);
+}
+.num { text-align: right; white-space: nowrap; }
+
+.wrap-anywhere { overflow-wrap: anywhere; }
+
+.offer-id { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+td em { color: var(--error); font-style: normal; }
+
+.no-offers { color: var(--muted); font-size: 0.875rem; margin: 12px 0 0; }
+
+.state-list { margin: 8px 0 0; padding-left: 20px; }
+
+/* Маленькие экраны: компактнее, длинные имена переносятся, таблицу можно прокрутить. */
+@media (max-width: 560px) {
+  .card { margin: 12px 10px; padding: 16px 14px 20px; }
+  body { font-size: 15px; }
+  th, td { padding: 7px 8px; }
+  table { font-size: 0.875rem; }
+  /* Колонка офера не сжимается до 3 символов: остальное прокручивается внутри обёртки. */
+  body[data-page="streams"] th:first-child,
+  body[data-page="streams"] td:first-child { min-width: 14rem; }
+  /* Таблица кампаний не сжимается: колонки читаются, лишнее прокручивается. */
+  body[data-page="campaigns"] table { min-width: 600px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

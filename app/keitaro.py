@@ -74,6 +74,12 @@ class KeitaroClient:
     async def get_campaigns(self):
         return await self._request("GET", "/campaigns")
 
+    async def get_campaign_streams(self, campaign_id: int):
+        return await self._request("GET", f"/campaigns/{campaign_id}/streams")
+
+    async def get_offer(self, offer_id: int):
+        return await self._request("GET", f"/offers/{offer_id}")
+
     async def aclose(self):
         if self._client:
             await self._client.aclose()

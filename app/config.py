@@ -4,8 +4,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    keitaro_api_key: str
-    keitaro_api_key_fallback: str | None = None
+    # Пустой дефолт: без .env сервер стартует, а новые data-эндпоинты
+    # отвечают 409 «API key is not configured» до ввода ключа через UI.
+    keitaro_api_key: str = ""
     keitaro_base_url: str = "https://tlgk.host"
     # Единственный путь: legacy /admin_api/v1, работает без белого списка IP.
     keitaro_api_base: str = "https://tlgk.host/admin_api/v1"

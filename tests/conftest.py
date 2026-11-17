@@ -1,4 +1,6 @@
+import hashlib
 import os
+from pathlib import Path
 
 # Ключ обязан существовать до первого импорта app.* (get_settings кэшируется).
 # Значение фиктивное — тесты ходят только в MockTransport.
@@ -47,7 +49,7 @@ def make_keitaro(handler) -> KeitaroClient:
     return KeitaroClient(transport=httpx.MockTransport(handler))
 
 
-def make_app_client(handler) -> tuple[TestClient, sessionmaker]:
+def make_app_client(handler, extra_overrides=None) -> tuple[TestClient, sessionmaker]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -65,6 +67,7 @@ def make_app_client(handler) -> tuple[TestClient, sessionmaker]:
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_keitaro] = lambda: make_keitaro(handler)
+    app.dependency_overrides.update(extra_overrides or {})
     return TestClient(app), Session
 
 
@@ -73,3 +76,28 @@ def client():
     c, _ = make_app_client(_legacy_response)
     yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _web_dir_immutable():
+    """Тесты не имеют права писать в web/** — это зона Pixel.
+
+    Сравнение sha256 всех файлов web/ до и после прогона: любое изменение
+    (даже запись от тестовой фикстуры) роняет сессию.
+    """
+
+    def snapshot() -> dict[str, str]:
+        return {
+            str(p.relative_to(web_dir)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(web_dir.rglob("*"))
+            if p.is_file()
+        }
+
+    web_dir = Path(__file__).resolve().parent.parent / "web"
+    if not web_dir.is_dir():
+        yield
+        return
+    before = snapshot()
+    yield
+    after = snapshot()
+    assert after == before, f"тесты изменили web/**: {set(after.items()) ^ set(before.items())}"
