@@ -96,6 +96,32 @@ def test_offers_only_positive_int_422(client, bad):
     assert client.get(f"/api/offers/{bad}").status_code == 422
 
 
+def test_streams_502_when_keitaro_5xx():
+    # Регрессия: GET /streams маппил KeitaroUnavailable в 500 с трейсбеком;
+    # UI потока ждёт «Keitaro недоступен» (502).
+    def down(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "boom"})
+
+    c, _ = make_app_client(down, extra_overrides={get_keitaro_with_key: lambda: make_keitaro(down)})
+    r = c.get("/api/campaigns/211903/streams")
+    assert r.status_code == 502
+    assert r.json() == {"detail": "Keitaro unavailable"}
+    app.dependency_overrides.clear()
+
+
+def test_offers_502_when_keitaro_5xx():
+    # Регрессия: GET /api/offers маппил KeitaroUnavailable в 500; как в
+    # streams/campaigns — недоступность Keitaro это 502, не 500.
+    def down(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "boom"})
+
+    c, _ = make_app_client(down, extra_overrides={get_keitaro_with_key: lambda: make_keitaro(down)})
+    r = c.get("/api/offers/25327")
+    assert r.status_code == 502
+    assert r.json() == {"detail": "Keitaro unavailable"}
+    app.dependency_overrides.clear()
+
+
 def test_streams_409_without_configured_key(tmp_path, monkeypatch):
     # Нет файла ключа и нет ключа в env → 409 без похода в Keitaro.
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")

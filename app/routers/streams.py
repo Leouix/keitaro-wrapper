@@ -10,7 +10,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..keitaro import KeitaroClient
+from ..keitaro import KeitaroClient, KeitaroUnavailable
 from .campaigns import get_keitaro_with_key
 
 router = APIRouter(prefix="/api/streams", tags=["streams"])
@@ -46,10 +46,14 @@ async def add_offer_to_stream(
 ):
     try:
         stream = await keitaro.get_stream(stream_id)
+    except KeitaroUnavailable as e:
+        # KeitaroUnavailable — НЕ HTTPException, мимо except HTTPException
+        # он дал бы 500 с трейсбеком; UI ждёт «Keitaro недоступен» (502).
+        raise HTTPException(502, "Keitaro unavailable") from e
     except HTTPException as e:
         if e.status_code == 404:
             raise HTTPException(404, "Поток не найден") from e
-        raise  # 403 permission / 502 HTML-логин / 502 недоступен — как есть
+        raise  # 403 permission / 502 HTML-логин — как есть
 
     schema = str(stream.get("schema") or "")
     if schema != "landings":
@@ -59,6 +63,8 @@ async def add_offer_to_stream(
 
     try:
         offer = await keitaro.get_offer(body.offer_id)
+    except KeitaroUnavailable as e:
+        raise HTTPException(502, "Keitaro unavailable") from e
     except HTTPException as e:
         if e.status_code == 404:
             raise HTTPException(404, "Офер не найден в Keitaro") from e
@@ -70,5 +76,11 @@ async def add_offer_to_stream(
 
     offers.append({"offer_id": body.offer_id, "share": 0, "state": "active"})
     payload = _offers_payload(offers)
-    updated = await keitaro.update_stream_offers(stream_id, stream.get("campaign_id"), payload)
+    try:
+        updated = await keitaro.update_stream_offers(
+            stream_id, stream.get("campaign_id"), payload
+        )
+    except KeitaroUnavailable as e:
+        # PUT ретраится внутри клиента; если и он не прошёл — 502, не 500.
+        raise HTTPException(502, "Keitaro unavailable") from e
     return {"added": True, "already": False, "stream": updated}

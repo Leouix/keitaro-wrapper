@@ -24,8 +24,6 @@
 
 [hidden] { display: none !important; }
 
-html { height: 100%; }
-
 body {
   margin: 0;
   min-height: 100%;
@@ -108,7 +106,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [tabindex="-1"]:focu
 .message.error { background: var(--error-bg); color: var(--error); }
 .message.success { background: var(--success-bg); color: var(--success); }
 .message.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
-.message.info { background: var(--info-bg); color: var(--text); }
+.message.info {  color: var(--text); }
 
 .error-actions { margin-top: 12px; }
 .error-actions .btn { margin-right: 10px; }
@@ -179,6 +177,8 @@ th {
 .num { text-align: right; white-space: nowrap; }
 
 .wrap-anywhere { overflow-wrap: anywhere; }
+/* Колонка «Поток»: имя («Flow 1») всегда одной строкой, таблица скроллится. */
+.nowrap { white-space: nowrap; }
 
 .offer-id { color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -197,6 +197,12 @@ td em { color: var(--error); font-style: normal; }
   margin: 0 0 14px;
 }
 .draft-count { color: var(--muted); font-size: 0.875rem; }
+
+/* Несохранённый черновик: карточка, форма и поля ввода ID оффера подсвечены.
+   Класс has-draft ставит app.js, только пока в черновике есть добавленные оферы. */
+.card.has-draft { background-color: #ffdbc287; }
+.card.has-draft .offer-form { background-color: #e8c9b46b; }
+.card.has-draft .offer-form input { background-color: #ffdbc287; }
 
 /* Каждый поток — своя секция: заголовок, таблица и форма добавления. */
 .stream-section { 
@@ -275,9 +281,9 @@ td em { color: var(--error); font-style: normal; }
   .offer-form-row { gap: 8px; }
   .offer-form-row .offer-search-field { flex: 1 1 100%; }
   .offer-form-row .toolbar-actions { margin-top: 0; }
-  /* Колонка офера не сжимается до 3 символов: остальное прокручивается внутри обёртки. */
-  body[data-page="streams"] th:first-child,
-  body[data-page="streams"] td:first-child { min-width: 14rem; }
+  /* Колонка офера (первая) не сжимается до 3 символов: остальное прокручивается внутри обёртки. */
+  body[data-page="streams"] th:nth-child(1),
+  body[data-page="streams"] td:nth-child(1) { min-width: 14rem; }
   /* Таблица кампаний не сжимается: колонки читаются, лишнее прокручивается. */
   body[data-page="campaigns"] table { min-width: 600px; }
 }

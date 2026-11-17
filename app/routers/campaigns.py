@@ -129,5 +129,10 @@ async def get_campaign_streams(
     campaign_id: int = FPath(gt=0),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
-    # Тело — ровно ответ Keitaro (список потоков); ошибки маппит KeitaroClient.
-    return await keitaro.get_campaign_streams(campaign_id)
+    # Тело — ровно ответ Keitaro (список потоков); 404/403/502 маппит KeitaroClient,
+    # недоступность (5xx/сеть после ретряев) переводим в 502 — UI ждёт
+    # «Keitaro недоступен», а не 500 с трейсбеком.
+    try:
+        return await keitaro.get_campaign_streams(campaign_id)
+    except KeitaroUnavailable as e:
+        raise HTTPException(502, "Keitaro unavailable") from e

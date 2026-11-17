@@ -373,8 +373,13 @@ function initStreams() {
     return (s && s.name) || `Поток ${s.id}`;
   }
 
-  function makeRow({ entry, offer, share, isDraft }) {
+  function makeRow({ stream, entry, offer, share, isDraft }) {
     const tr = document.createElement('tr');
+
+    const tdStream = document.createElement('td');
+    // Имя потока не переносится: «Flow 1» должно оставаться одной строкой.
+    tdStream.className = 'nowrap';
+    tdStream.textContent = stream ? streamName(stream) : '—';
 
     const tdOffer = document.createElement('td');
     tdOffer.className = 'wrap-anywhere';
@@ -408,7 +413,7 @@ function initStreams() {
     const payout = offer ? Number(offer.payout_value) : 0;
     tdPayout.textContent = payout ? [payout, offer.payout_currency].filter(Boolean).join(' ') : '';
 
-    tr.append(tdOffer, tdState, tdShare, tdPayout);
+    tr.append(tdOffer, tdShare, tdState, tdStream, tdPayout);
     return tr;
   }
 
@@ -422,7 +427,7 @@ function initStreams() {
 
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    for (const [name, cls] of [['Офер', ''], ['Статус', ''], ['Доля', 'num'], ['Выплата', 'num']]) {
+    for (const [name, cls] of [['Офер', ''], ['Доля', 'num'], ['Статус', ''], ['Поток', ''], ['Выплата', 'num']]) {
       const th = document.createElement('th');
       th.scope = 'col';
       th.textContent = name;
@@ -438,6 +443,7 @@ function initStreams() {
     const share = hasDraft ? Math.floor(100 / (entries.length + streamDraft.length)) : null;
     for (const entry of entries) {
       rows.push({
+        stream: s,
         entry,
         offer: offersMap.get(entry.offer_id) ?? null,
         share: hasDraft ? share : (entry.share == null ? null : entry.share),
@@ -445,7 +451,7 @@ function initStreams() {
       });
     }
     for (const d of streamDraft) {
-      rows.push({ entry: { offer_id: d.offer.id, share }, offer: d.offer, share, isDraft: true });
+      rows.push({ stream: s, entry: { offer_id: d.offer.id, share }, offer: d.offer, share, isDraft: true });
     }
 
     const tbody = document.createElement('tbody');
@@ -493,9 +499,27 @@ function initStreams() {
   }
 
   function renderStreams() {
-    // Каждый поток — своя секция в порядке сервера.
-    streamsList.replaceChildren(...streamsData.map(renderStreamSection));
+    // Сначала потоки с офферами с сервера, пустые — внизу; внутри групп порядок
+    // сервера сохраняется (stable sort). Локальный черновик порядок не двигает:
+    // иначе секция прыгает наверх, пока в неё добавляют офер.
+    const withOffers = new Set(
+      streamsData
+        .filter((s) => Array.isArray(s.offers) && s.offers.length > 0)
+        .map((s) => s.id)
+    );
+    const sorted = [...streamsData].sort(
+      (a, b) => (withOffers.has(b.id) ? 1 : 0) - (withOffers.has(a.id) ? 1 : 0)
+    );
+    streamsList.replaceChildren(...sorted.map(renderStreamSection));
     syncSend();
+    syncDraftHighlight();
+  }
+
+  /** Подсветка несохранённого черновика: только когда в черновике есть оферы.
+   *  Введённый, но ещё не добавленный ID черновиком не считается. */
+  function syncDraftHighlight() {
+    const card = document.querySelector('main.card');
+    if (card) card.classList.toggle('has-draft', draft.length > 0);
   }
 
   function renderStreamSection(s) {
@@ -592,7 +616,7 @@ function initStreams() {
         st.controller = null;
       }
       st.found = null;
-      setHint(hint, 'Введите ID оффера');
+      setHint(hint, '');
       syncStream(streamId);
     }
 
@@ -629,13 +653,13 @@ function initStreams() {
       // Поле очищается, найденный офер «забывается», фокус остаётся в поле.
       st.found = null;
       input.value = '';
-      setHint(hint, 'Введите ID оффера');
+      setHint(hint, '');
       renderStreams();
       const fresh = document.getElementById(`offer-id-${streamId}`);
       if (fresh) fresh.focus();
     });
 
-    setHint(hint, 'Введите ID оффера');
+    setHint(hint, '');
     syncStream(streamId);
     return form;
   }

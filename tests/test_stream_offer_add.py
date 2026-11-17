@@ -220,6 +220,46 @@ def test_put_html_login_502():
     assert "IP" in r.json()["detail"]
 
 
+class _Down5xx:
+    """Отвечает 5xx только на выбранный upstream-вызов (метод+часть пути),
+    остальное — как в обычном StreamsHandler: так ловится ровно одна точка
+    отказа (GET потока / GET офера / PUT) за тест."""
+
+    def __init__(self, stream, method: str, path_part: str):
+        self.base = StreamsHandler(stream)
+        self.method, self.path_part = method, path_part
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.method == self.method and self.path_part in request.url.path:
+            return httpx.Response(500, json={"error": "boom"})
+        return self.base(request)
+
+
+def test_stream_get_5xx_maps_to_502_not_500():
+    # Регрессия: KeitaroUnavailable не HTTPException — без маппинга он не
+    # ловился и поднимался как 500/необработанное исключение; UI ждёт
+    # «Keitaro недоступен» (502).
+    c = make_client(_Down5xx(LANDINGS_EMPTY, "GET", "/admin_api/v1/streams/"))
+    r = add_offer(c, LANDINGS_EMPTY["id"])
+    assert r.status_code == 502
+    assert r.json() == {"detail": "Keitaro unavailable"}
+
+
+def test_offer_get_5xx_maps_to_502_not_500():
+    c = make_client(_Down5xx(LANDINGS_3, "GET", "/admin_api/v1/offers/"))
+    r = add_offer(c, LANDINGS_3["id"])
+    assert r.status_code == 502
+    assert r.json() == {"detail": "Keitaro unavailable"}
+
+
+def test_put_5xx_maps_to_502_not_500():
+    # Ретраи внутри клиента исчерпаны → KeitaroUnavailable → 502, не 500.
+    c = make_client(_Down5xx(LANDINGS_3, "PUT", "/admin_api/v1/streams/"))
+    r = add_offer(c, LANDINGS_3["id"])
+    assert r.status_code == 502
+    assert r.json() == {"detail": "Keitaro unavailable"}
+
+
 def test_no_api_key_409(tmp_path, monkeypatch):
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
     monkeypatch.setattr(
@@ -258,4 +298,25 @@ def test_campaign_id_not_accepted_from_client():
     c = make_client(h)
     r = add_offer(c, LANDINGS_EMPTY["id"], campaign_id=999)
     assert r.status_code == 422
+    assert h.put_bodies == []
+
+
+def test_offer_id_string_is_coerced_like_pydantic():
+    # pydantic lax-режим коэрсит "25328" → 25328: успешное добавление,
+    # а не 422. Контракт мока должен это повторять.
+    h = StreamsHandler(LANDINGS_EMPTY)
+    c = make_client(h)
+    r = c.post(f"/api/streams/{LANDINGS_EMPTY['id']}/offers",
+               json={"offer_id": str(NEW_OFFER_ID)})
+    assert r.status_code == 200
+    assert r.json()["added"] is True
+
+
+def test_offer_id_bool_coerced_then_404():
+    # true → int(True)=1 → офера 1 в Keitaro нет → 404 «Офер не найден».
+    h = StreamsHandler(LANDINGS_EMPTY)
+    c = make_client(h)
+    r = c.post(f"/api/streams/{LANDINGS_EMPTY['id']}/offers", json={"offer_id": True})
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Офер не найден в Keitaro"
     assert h.put_bodies == []
