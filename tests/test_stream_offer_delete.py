@@ -220,15 +220,76 @@ def test_delete_put_body_only_offers_and_campaign():
     ]
 
 
-# --- 2. Единственный офер: 409, PUT не отправляется -------------------------
+# --- 2. Единственный офер: 200, один PUT с offers: [], архивная строка -------
 
 
-def test_delete_last_offer_409_no_put():
+def test_delete_last_offer_200_put_empty_and_archive_row():
+    # Запрет снят: удаление единственного офера разрешено — поток уходит
+    # в Keitaro с пустым списком оферов (offers: []), офер архивируется.
     h = StreamsHandler(LANDINGS_1)
     c, Session = make_client(h)
     r = delete_offer(c, offer_id=25327)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["removed"] is True
+    assert body["already"] is False
+    # Ровно один PUT: пустой список оферов.
+    assert len(h.put_bodies) == 1
+    assert h.put_bodies[0] == {"campaign_id": CAMPAIGN_ID, "offers": []}
+    # В ответе — обновлённый поток из Keitaro (мок отражает PUT-тело).
+    assert body["stream"]["offers"] == []
+    # Архивная строка: последние известные share/state удалённого офера.
+    row = read_state(Session, STREAM_ID, 25327)
+    assert row is not None
+    assert row["campaign_id"] == CAMPAIGN_ID
+    assert row["share"] == 100  # доля единственного офера на момент удаления
+    assert row["state"] == "active"
+    assert row["archived_at"] is not None
+    assert row["archive_reason"] == "user"
+    assert row["last_seen_at"] is not None
+
+
+class StatefulStreamsHandler(StreamsHandler):
+    """Мок отражает успешный PUT: GET потока после него отдаёт новые offers —
+    как живой Keitaro. Нужен для «повторное удаление после пустого потока»."""
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        resp = super().__call__(request)
+        if request.method == "PUT" and resp.status_code == 200:
+            self.stream = {**self.stream, "offers": self.put_bodies[-1]["offers"]}
+        return resp
+
+
+def test_delete_last_offer_twice_second_is_already_no_put():
+    # После опустошения потока повторное удаление — идемпотентный noop
+    # без второго PUT: архивная строка уже есть.
+    h = StatefulStreamsHandler(LANDINGS_1)
+    c, Session = make_client(h)
+    r1 = delete_offer(c, offer_id=25327)
+    assert r1.status_code == 200
+    assert h.put_bodies == [{"campaign_id": CAMPAIGN_ID, "offers": []}]
+
+    before = read_state(Session, STREAM_ID, 25327)
+    r2 = delete_offer(c, offer_id=25327)
+    assert r2.status_code == 200
+    assert r2.json() == {
+        "removed": False,
+        "already": True,
+        "stream": {**LANDINGS_1, "offers": []},
+    }
+    assert h.put_bodies == [{"campaign_id": CAMPAIGN_ID, "offers": []}]  # второй PUT не ушёл
+    assert read_state(Session, STREAM_ID, 25327) == before
+
+
+def test_delete_redirect_stream_409_no_put():
+    # Регрессия: redirect-поток по-прежнему не принимает оферы —
+    # 409 до offer-lookup, PUT не уходит (снятие запрета этого не меняет).
+    REDIRECT = {**LANDINGS_1, "schema": "redirect"}
+    h = StreamsHandler(REDIRECT)
+    c, Session = make_client(h)
+    r = delete_offer(c, offer_id=25327)
     assert r.status_code == 409
-    assert "единственный" in r.json()["detail"]
+    assert "schema=redirect" in r.json()["detail"]
     assert h.put_bodies == []
     assert read_state(Session, STREAM_ID, 25327) is None
 

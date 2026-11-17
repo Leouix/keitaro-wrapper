@@ -33,6 +33,13 @@
                 title="Сначала удалите или верните офер, либо добавьте его в черновик">Отправить в Кейтаро</button>
         <span id="draft-count" class="draft-count"></span>
       </div>
+      <div id="send-warning" class="send-warning" role="alert" aria-live="polite" hidden>
+        <p id="send-warning-text" class="send-warning-text"></p>
+        <div class="send-warning-actions">
+          <button id="send-warning-cancel" type="button" class="btn btn-secondary">Отмена</button>
+          <button id="send-warning-confirm" type="button" class="btn btn-danger">Всё равно отправить</button>
+        </div>
+      </div>
       <p id="send-status" class="status-line" role="status" hidden></p>
       <div id="streams-list"></div>
     </div>

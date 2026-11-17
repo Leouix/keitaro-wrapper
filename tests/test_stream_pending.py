@@ -297,16 +297,110 @@ def test_apply_with_empty_pending_is_noop_no_put():
 # --- 4. Отказы: 409/404, pending не тронут -----------------------------------
 
 
-def test_apply_removing_last_offer_409_pending_intact():
+def test_apply_removing_last_offer_200_put_empty_and_archive_row():
+    # Запрет снят: apply с remove последнего офера разрешён — один PUT
+    # с offers: [], поток остаётся без оферов, офер архивируется.
     h = PendingHandler(LANDINGS_1)
     c, Session = make_client(h)
     put_pending(c, {"add": [], "remove": [25327]})
 
     r = apply_pending(c)
-    assert r.status_code == 409
-    assert "единственный" in r.json()["detail"]
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied"] is True
+    assert body["noop"] is False
+    assert body["removed"] == [25327]
+    assert len(h.put_bodies) == 1
+    assert h.put_bodies[0] == {"campaign_id": CAMPAIGN_ID, "offers": []}
+    assert body["stream"]["offers"] == []
+    # Архивная строка: последние известные share/state офера.
+    archived = read_state(Session, STREAM_ID, 25327)
+    assert archived is not None
+    assert archived["archived_at"] is not None
+    assert archived["archive_reason"] == "user"
+    assert archived["share"] == 100
+    assert archived["state"] == "active"
+    # pending очищен.
+    assert read_pending(Session) == []
+
+
+def test_apply_remove_last_and_add_other_one_offer_share_100():
+    # remove последнего + add другого: поток не пустеет — остаётся один
+    # офер с долей 100 (PUT уходит только с новым офером).
+    h = PendingHandler(LANDINGS_1)
+    c, Session = make_client(h)
+    put_pending(c, {"add": [25328], "remove": [25327]})
+
+    r = apply_pending(c)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied"] is True
+    assert body["noop"] is False
+    assert body["added"] == [25328]
+    assert body["removed"] == [25327]
+    assert len(h.put_bodies) == 1
+    assert h.put_bodies[0] == {
+        "campaign_id": CAMPAIGN_ID,
+        "offers": [{"offer_id": 25328, "share": 100, "state": "active"}],
+    }
+    assert body["stream"]["offers"] == h.put_bodies[0]["offers"]
+    # 25327 архивирован (user), 25328 — живая строка с share 100.
+    archived = read_state(Session, STREAM_ID, 25327)
+    assert archived["archive_reason"] == "user"
+    assert archived["share"] == 100
+    live_row = read_state(Session, STREAM_ID, 25328)
+    assert live_row is not None
+    assert live_row["archived_at"] is None
+    assert live_row["share"] == 100
+    assert read_pending(Session) == []
+
+
+class StatefulPendingHandler(PendingHandler):
+    """Мок отражает успешный PUT: GET потока после него отдаёт новые offers —
+    как живой Keitaro. Нужен для «повторный apply после пустого потока»."""
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        resp = super().__call__(request)
+        if request.method == "PUT" and resp.status_code == 200:
+            self.stream = {**self.stream, "offers": self.put_bodies[-1]["offers"]}
+        return resp
+
+
+def test_apply_again_after_emptied_stream_is_noop_no_put():
+    # Регрессия на снятый запрет: первый apply опустошил поток (200, PUT
+    # offers: []), повторный apply — noop без PUT (поток уже пуст).
+    h = StatefulPendingHandler(LANDINGS_1)
+    c, Session = make_client(h)
+    put_pending(c, {"add": [], "remove": [25327]})
+
+    r1 = apply_pending(c)
+    assert r1.status_code == 200
+    assert r1.json()["noop"] is False
+    assert h.put_bodies == [{"campaign_id": CAMPAIGN_ID, "offers": []}]
+
+    # В моке (как в Keitaro) поток теперь без оферов; pending пуст.
+    r2 = apply_pending(c)
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["applied"] is True
+    assert body["noop"] is True
+    assert body["stream"]["offers"] == []
+    assert len(h.put_bodies) == 1  # второй PUT не ушёл
+    assert read_pending(Session) == []
+
+
+def test_apply_remove_already_gone_on_empty_stream_noop_no_put():
+    # Pending с remove, а в Keitaro поток уже пуст (offers: []): менять
+    # нечего — noop без PUT, pending очищается.
+    h = PendingHandler({**LANDINGS_1, "offers": []})
+    c, Session = make_client(h)
+    put_pending(c, {"add": [], "remove": [25327]})
+
+    r = apply_pending(c)
+    assert r.status_code == 200
+    assert r.json()["noop"] is True
     assert h.put_bodies == []
-    assert read_pending(Session) == [(25327, "remove")]
+    assert read_pending(Session) == []
 
 
 def test_apply_add_unknown_offer_404_pending_intact():

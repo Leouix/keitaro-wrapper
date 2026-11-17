@@ -78,18 +78,28 @@ label { display: block; font-weight: 600; margin-bottom: 6px; }
   padding: 9px 16px;
   font-size: 1rem;
   font-weight: 600;
-  color: #fff;
-  background: var(--primary);
-  border: 1px solid var(--primary);
+  color: #474646;
   border-radius: 8px;
   cursor: pointer;
   text-decoration: none;
 }
-.btn:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn:disabled { background: #9db8f0; border-color: #9db8f0; cursor: default; }
 
-.btn-secondary { background: var(--card); color: var(--primary); }
-.btn-secondary:hover:not(:disabled) { background: #eaf0fe; }
+#send-btn.btn {
+  background: green;
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  background: #ccc;
+  color: #fff;
+}
+
+#send-btn.btn:disabled {
+  opacity: 0.4;
+  background: #ccc;
+  color: #fff;
+}
 
 .link { color: var(--primary); }
 a:focus-visible, button:focus-visible, input:focus-visible, [tabindex="-1"]:focus {
@@ -255,6 +265,21 @@ td em { color: var(--error); font-style: normal; }
 
 .status-line.error { background: var(--error-bg); color: var(--error); }
 
+/* Предупреждение перед отправкой потока без оферов: инлайн-блок под кнопкой
+   «Отправить в Кейтаро», жёлтая warn-палитра бейджей, не dialog/confirm(). */
+.send-warning {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 0.9375rem;
+}
+.send-warning-text { margin: 0; }
+.send-warning-actions { margin-top: 10px; }
+.send-warning-actions .btn { margin-right: 10px; }
+
 /* Компактные кнопки в колонке «Действие»: не ломают высоту строки и не переносятся. */
 .btn-sm {
   padding: 4px 10px;
@@ -263,12 +288,17 @@ td em { color: var(--error); font-style: normal; }
   white-space: nowrap;
 }
 /* Опасное действие — удаление офера из потока. */
-.btn-danger { background: var(--error); border-color: var(--error); }
-.btn-danger:hover:not(:disabled) { background: #7f150d; border-color: #7f150d; }
+.btn-danger { 
+  color: #4e4e4e;
+  background: #ffffff;
+  border-color: #393939; 
+  min-width: 90px;
+}
+
 .btn-danger:disabled { background: #e2b4b0; border-color: #e2b4b0; }
 
 /* Архивные строки: приглушены, после живых строк той же таблицы. */
-.archived-row { background: #f8fafc; }
+
 .archived-row td { color: var(--muted); }
 
 /* Ожидающая строка (pending remove / pending add): жёлтый фон, как у черновика.
@@ -320,6 +350,9 @@ tr.pending-row { background-color: #ffdbc287; }
   .offer-form-row { gap: 8px; }
   .offer-form-row .offer-search-field { flex: 1 1 100%; }
   .offer-form-row .toolbar-actions { margin-top: 0; }
+  /* Предупреждение на узком экране: кнопки в столбик на всю ширину. */
+  .send-warning-actions { display: flex; flex-direction: column; gap: 8px; }
+  .send-warning-actions .btn { margin-right: 0; }
   /* Колонка офера (первая) не сжимается до 3 символов: остальное прокручивается внутри обёртки. */
   body[data-page="streams"] th:nth-child(1),
   body[data-page="streams"] td:nth-child(1) { min-width: 14rem; }

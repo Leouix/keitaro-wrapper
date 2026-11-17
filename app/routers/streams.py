@@ -10,6 +10,9 @@
   успеха офер архивируется в stream_offer_state (archive_reason="user");
   ошибка записи в БД после успешного PUT не ломает ответ — логируем и
   всё равно отдаём 200;
+- запрет «нельзя удалить единственный офер» снят (2026-11-17, проверено
+  живым PUT на потоке 1313077: Keitaro принимает offers: []); пустой
+  landings-поток допустим;
 - POST возвращает офер из архива к жизни (archived_at=None).
 
 Страница потоков теперь работает local-first: удаление/возврат офера
@@ -239,8 +242,9 @@ async def remove_offer_from_stream(
 ):
     """Синхронное удаление офера из потока: PUT в Keitaro c пересчитанными
     долями, при успехе — архивная строка (archive_reason="user").
-    Восстановить офер можно POST-ом (снимает архив) или через
-    archive-эндпоинт кампании.
+    Удаление последнего офера разрешено: PUT уходит с offers: [], пустой
+    landings-поток допустим. Восстановить офер можно POST-ом (снимает
+    архив) или через archive-эндпоинт кампании.
 
     Оставлен для совместимости; страница потоков теперь ходит через
     PUT .../pending + POST .../apply (local-first: удаление меняет только
@@ -265,10 +269,8 @@ async def remove_offer_from_stream(
             return {"removed": False, "already": True, "stream": stream}
         raise HTTPException(404, "Офер не найден в потоке")
 
-    if len(offers) == 1:
-        # Поток без оферов Keitaro не принимает — PUT не делаем.
-        raise HTTPException(409, "Нельзя удалить единственный офер потока")
-
+    # Удаление последнего офера разрешено: Keitaro принимает offers: []
+    # (проверено живым PUT на потоке 1313077, 2026-11-17).
     payload = reshare([o for o in offers if o.get("offer_id") != offer_id])
     try:
         updated = await keitaro.update_stream_offers(
@@ -470,7 +472,8 @@ async def apply_stream_pending(
 
     local=final вычисляется из живого списка оферов: live минус remove
     плюс add (уже существующие не дублируются, порядок add сохраняется).
-    final пуст -> 409 (нельзя удалить единственный офер); final == live
+    final пуст -> обычный PUT с offers: [] — пустой landings-поток
+    допустим (запрет «единственный офер» снят 2026-11-17); final == live
     -> noop без PUT, pending очищается. Ошибка БД после успешного PUT
     не отменяет 200 — как в синхронных эндпоинтах.
     """
@@ -504,10 +507,6 @@ async def apply_stream_pending(
     for oid in adds:
         if oid not in final_ids:
             final_ids.append(oid)
-
-    if not final_ids:
-        # final пуст: PUT отвергнет поток без оферов — pending не трогаем.
-        raise HTTPException(409, "Нельзя удалить единственный офер потока")
 
     # Каждый add должен существовать в Keitaro (404 — pending не трогаем).
     for oid in adds:

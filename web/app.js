@@ -163,7 +163,7 @@ function initCampaigns() {
   function retryButton(query) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'btn btn-secondary';
+    b.className = 'btn';
     b.textContent = 'Повторить';
     b.addEventListener('click', () => search(query));
     return b;
@@ -304,6 +304,10 @@ function initStreams() {
   const sendBtn = $('send-btn');
   const draftCount = $('draft-count');
   const sendStatus = $('send-status');
+  const sendWarning = $('send-warning');
+  const sendWarningText = $('send-warning-text');
+  const sendWarningCancel = $('send-warning-cancel');
+  const sendWarningConfirm = $('send-warning-confirm');
 
   const match = window.location.pathname.match(/^\/fb\/campaigns\/(\d+)\/streams\/?$/);
   if (!match) {
@@ -401,7 +405,7 @@ function initStreams() {
   function retryButton() {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'btn btn-secondary';
+    b.className = 'btn';
     b.textContent = 'Повторить';
     b.addEventListener('click', load);
     return b;
@@ -485,7 +489,7 @@ function initStreams() {
   function makeActionCell({ stream, entry, isArchived, pendingAction }) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'btn btn-sm ' + (pendingAction || isArchived ? 'btn-secondary' : 'btn-danger');
+    btn.className = 'btn btn-sm ' + (pendingAction || isArchived ? '' : 'btn-danger');
     const streamId = stream ? stream.id : null;
     btn.dataset.streamId = streamId == null ? '' : String(streamId);
     btn.dataset.offerId = String(entry.offer_id);
@@ -636,6 +640,9 @@ function initStreams() {
 
   function syncSend() {
     sendBtn.disabled = sending || pending.length === 0;
+    // Единственная точка актуализации: любое изменение pending проходит
+    // через renderStreams -> syncSend.
+    refreshSendWarning();
     sendBtn.title = sending ? 'Идёт отправка…'
       : pending.length === 0 ? 'Нет отложенных изменений'
       : '';
@@ -765,7 +772,7 @@ function initStreams() {
     const addBtn = document.createElement('button');
     addBtn.id = `add-btn-${streamId}`;
     addBtn.type = 'button';
-    addBtn.className = 'btn btn-secondary';
+    addBtn.className = 'btn';
     addBtn.disabled = true;
     addBtn.textContent = 'Добавить';
     addBtn.title = 'Сначала найдите офер по ID';
@@ -903,7 +910,7 @@ function initStreams() {
 
   function applyErrorText(status, body) {
     if (status === 404) return detailToText(body && body.detail, 'Поток или офер не найден в Keitaro.');
-    if (status === 409) return detailToText(body && body.detail, 'Поток не принимает оферы или остался бы без оферов.');
+    if (status === 409) return detailToText(body && body.detail, 'Поток не принимает оферы: не совпадает схема или кампания.');
     if (status === 502) return 'Keitaro недоступен.';
     if (status === 0) return 'Сеть недоступна.';
     return detailToText(body && body.detail, `Ошибка отправки (код ${status}).`);
@@ -936,24 +943,13 @@ function initStreams() {
 
   /** «Удалить» у живого офера: строка остаётся на месте, фон жёлтый,
    *  бейдж «к удалению», доля «—», остальные доли пересчитаны. Единственный
-   *  запрос — PUT .../pending; в Keitaro ничего не уходит до «Отправить». */
+   *  запрос — PUT .../pending; в Keitaro ничего не уходит до «Отправить».
+   *  Удаление последнего живого офера разрешено: перед отправкой его
+   *  перехватывает предупреждение «поток останется без оферов». */
   async function deleteOffer(stream, entry) {
     const streamId = stream.id;
     const offerId = entry.offer_id;
     if (!streamId || sending || busyStreams.has(streamId)) return;
-
-    // Последний живой офер удалять нельзя (Keitaro пустой поток не принимает).
-    // Отложенное добавление оставляет потоку итоговый офер — тогда можно.
-    const entries = Array.isArray(stream.offers) ? stream.offers : [];
-    const removes = new Set(
-      pendingForStream(streamId).filter((p) => p.action === 'remove').map((p) => p.offer_id)
-    );
-    const liveCount = entries.filter((e) => !removes.has(e.offer_id)).length;
-    if (liveCount <= 1 && !pendingForStream(streamId).some((p) => p.action === 'add')) {
-      streamErrors.set(streamId, 'Нельзя удалить единственный офер потока.');
-      renderStreams();
-      return;
-    }
 
     busyStreams.add(streamId);
     streamErrors.delete(streamId);
@@ -1033,9 +1029,100 @@ function initStreams() {
     focusRowButton(streamId, offerId);
   }
 
-  sendBtn.addEventListener('click', async () => {
+  /** Потоки, по которым есть отложенные изменения, в порядке списка;
+   *  поток вне списка (редкий случай) — в конец, apply проверяет кампанию
+   *  по самому потоку. */
+  function applyTargets() {
+    const targets = streamsData
+      .filter((s) => pendingForStream(s.id).length > 0)
+      .map((s) => s.id);
+    const known = new Set(targets);
+    for (const sid of new Set(pending.map((p) => p.stream_id))) {
+      if (!known.has(sid)) targets.push(sid);
+    }
+    return targets;
+  }
+
+  /** Итог по оферам потока после отправки: живые − ожидающие удаления +
+   *  ожидающие добавления. Ноль = поток останется без оферов. */
+  function streamOfferTotal(streamId) {
+    const s = streamsData.find((x) => x.id === streamId);
+    const live = Array.isArray(s && s.offers) ? s.offers.length : 0;
+    const rows = pendingForStream(streamId);
+    const adds = rows.filter((p) => p.action === 'add').length;
+    const removes = rows.filter((p) => p.action === 'remove').length;
+    return live - removes + adds;
+  }
+
+  function hideSendWarning() {
+    sendWarning.hidden = true;
+    sendWarningText.textContent = '';
+  }
+
+  /** Текст предупреждения: по предложению на каждый поток с нулевым итогом. */
+  function warningText(emptyStreams) {
+    return emptyStreams
+      .map((sid) => streamName(streamsData.find((x) => x.id === sid) || { id: sid }))
+      .map((n) => `Поток «${n}» останется без оферов и перестанет принимать трафик.`)
+      .join(' ');
+  }
+
+  function showSendWarning(emptyStreams) {
+    sendWarningText.textContent = warningText(emptyStreams);
+    sendWarning.hidden = false;
+    sendWarningCancel.focus();
+  }
+
+  /** Актуализация предупреждения при каждом изменении pending (вызывается
+   *  из syncSend): если блок показан, заново собираем потоки с нулевым
+   *  итогом. Исчезли — скрываем; остались — обновляем текст, не двигая
+   *  фокус (он у строки, где работает человек). */
+  function refreshSendWarning() {
+    if (sendWarning.hidden) return;
+    const emptyStreams = applyTargets().filter((sid) => streamOfferTotal(sid) <= 0);
+    if (!emptyStreams.length) {
+      hideSendWarning();
+    } else {
+      sendWarningText.textContent = warningText(emptyStreams);
+    }
+  }
+
+  sendBtn.addEventListener('click', () => {
     if (sendBtn.disabled || sending) return;
-    const sendHadFocus = document.activeElement === sendBtn;
+    // Повторный клик всегда сбрасывает прошлое предупреждение.
+    hideSendWarning();
+    const emptyStreams = applyTargets().filter((sid) => streamOfferTotal(sid) <= 0);
+    if (emptyStreams.length) {
+      // Ничего не отправляем и pending не трогаем, пока не нажато
+      // «Всё равно отправить» (или «Отмена»).
+      showSendWarning(emptyStreams);
+      return;
+    }
+    runApply();
+  });
+
+  sendWarningConfirm.addEventListener('click', () => {
+    if (sending) return;
+    // После «Всё равно отправить» предупреждение больше не показываем.
+    hideSendWarning();
+    runApply();
+  });
+
+  sendWarningCancel.addEventListener('click', () => {
+    hideSendWarning();
+    sendBtn.focus();
+  });
+
+  sendWarning.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideSendWarning();
+      sendBtn.focus();
+    }
+  });
+
+  async function runApply() {
+    const focusWasInSendArea = document.activeElement === sendBtn
+      || sendWarning.contains(document.activeElement);
     sending = true;
     tableBlock.setAttribute('aria-busy', 'true');
     syncSend();
@@ -1044,13 +1131,7 @@ function initStreams() {
 
     // Потоки с ожидающими изменениями, в порядке списка; поток вне списка
     // (редкий случай) — в конец, apply проверяет кампанию по самому потоку.
-    const targets = streamsData
-      .filter((s) => pendingForStream(s.id).length > 0)
-      .map((s) => s.id);
-    const known = new Set(targets);
-    for (const sid of new Set(pending.map((p) => p.stream_id))) {
-      if (!known.has(sid)) targets.push(sid);
-    }
+    const targets = applyTargets();
 
     let applied = 0;
     let failed = 0;
@@ -1112,7 +1193,7 @@ function initStreams() {
     renderStreams();
 
     // Кнопка ушла в disabled при отправке — возвращаем фокус на статус, а не в «никуда».
-    if (sendHadFocus && sendBtn.disabled) {
+    if (focusWasInSendArea && sendBtn.disabled) {
       sendStatus.setAttribute('tabindex', '-1');
       sendStatus.focus();
     }
@@ -1122,7 +1203,7 @@ function initStreams() {
       await refreshArchive();
       renderStreams();
     }
-  });
+  }
 
   async function load(opts = {}) {
     const refresh = opts.refresh === true;
