@@ -111,12 +111,17 @@ async def get_campaign(
     db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro),
 ):
+    """Детальная кампания для фронта: только whitelisted поля (без token).
+    Кэш при недоступности Keitaro — в той же плоской форме + stale=true."""
     try:
         data = await keitaro.get_campaign(campaign_id)
     except KeitaroUnavailable:
-        return _stale(db, keitaro_id=campaign_id)
+        row = db.get(CampaignCache, campaign_id)
+        if row is None:
+            raise HTTPException(503, "Keitaro unavailable and no cached data")
+        return {**_whitelist(row.payload), "stale": True}
     _upsert(db, [data])
-    return data
+    return _whitelist(data)
 
 
 @router.get("/{campaign_id}/streams")
