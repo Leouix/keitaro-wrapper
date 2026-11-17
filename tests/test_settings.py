@@ -99,8 +99,8 @@ def test_save_api_key_html_login_400(client, monkeypatch, key_store):
     )
     r = client.post("/api/settings/api-key", json={"api_key": "k" * 24})
     assert r.status_code == 400
-    # HTML-логин значит «IP не в белом списке» — это проблема доступа, не сети.
-    assert "IP" in r.json()["detail"]
+    # HTML вместо JSON от Keitaro — всё равно отказ в доступе (403), это проблема ключа.
+    assert "denied" in r.json()["detail"]
     assert key_store.read() is None
 
 

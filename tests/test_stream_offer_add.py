@@ -210,14 +210,14 @@ def test_put_403_permission_propagates():
     assert "permission" in r.json()["detail"]
 
 
-def test_put_html_login_502():
+def test_put_html_login_403():
     h = StreamsHandler(LANDINGS_EMPTY)
     h.put_status = 403
     h.put_text = HTML_LOGIN_PAGE
     c = make_client(h)
     r = add_offer(c, LANDINGS_EMPTY["id"])
-    assert r.status_code == 502
-    assert "IP" in r.json()["detail"]
+    assert r.status_code == 403
+    assert "denied" in r.json()["detail"]
 
 
 class _Down5xx:

@@ -45,18 +45,14 @@ class KeitaroClient:
     def _handle(resp: httpx.Response):
         status = resp.status_code
         if status in (401, 403):
-            # 403 различаем: JSON с полем error — права ключа,
-            # HTML-страница логина — белый список IP.
+            # 401/403 от Keitaro — всегда проблема ключа или прав.
             try:
                 body = resp.json()
             except ValueError:
                 body = None
             if isinstance(body, dict) and "error" in body:
                 raise HTTPException(403, f"Keitaro permission denied: {body['error']}")
-            raise HTTPException(
-                502,
-                "Keitaro admin blocked for this IP: 403 login page, check IP whitelist",
-            )
+            raise HTTPException(403, "Keitaro denied the request (403)")
         if status == 404:
             raise HTTPException(404, "Not found in Keitaro")
         if status >= 400:

@@ -99,14 +99,14 @@ def test_200_with_error_body_maps_to_403():
     assert "permission" in r.json()["detail"]
 
 
-def test_html_login_403_maps_to_502():
+def test_html_login_403_maps_to_403():
     def handler(request):
         return httpx.Response(403, text=HTML_LOGIN_PAGE, headers={"content-type": "text/html"})
 
     c, _ = make_app_client(handler)
     r = c.get("/api/campaigns/211903")
-    assert r.status_code == 502
-    assert "IP" in r.json()["detail"]
+    assert r.status_code == 403
+    assert "denied" in r.json()["detail"]
 
 
 def test_non_json_response_maps_to_502():

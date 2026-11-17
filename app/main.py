@@ -62,7 +62,7 @@ def healthz():
 
 @app.get("/healthz/keitaro")
 async def healthz_keitaro(keitaro: KeitaroClient = Depends(get_keitaro)):
-    # Пинг Admin API: после добавления IP в белый список проверка — один запрос.
+    # Пинг Admin API: проверка доступности — один запрос.
     try:
         await keitaro.get_campaigns()
     except KeitaroUnavailable:

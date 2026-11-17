@@ -270,6 +270,40 @@ td em { color: var(--error); font-style: normal; }
   vertical-align: 1px;
 }
 
+/* Компактные кнопки в колонке «Действие»: не ломают высоту строки и не переносятся. */
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+/* Опасное действие — удаление офера из потока. */
+.btn-danger { background: var(--error); border-color: var(--error); }
+.btn-danger:hover:not(:disabled) { background: #7f150d; border-color: #7f150d; }
+.btn-danger:disabled { background: #e2b4b0; border-color: #e2b4b0; }
+
+/* Архивные строки: приглушены, после живых строк той же таблицы. */
+.archived-row { background: #f8fafc; }
+.archived-row td { color: var(--muted); }
+
+.archived-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--info-bg);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: 1px;
+}
+
+/* Ошибка последней операции по конкретному потоку — под его таблицей. */
+.stream-error { margin: 10px 0 0; }
+
 /* Маленькие экраны: компактнее, длинные имена переносятся, таблицу можно прокрутить. */
 @media (max-width: 560px) {
   .card { margin: 12px 10px; padding: 16px 14px 20px; }

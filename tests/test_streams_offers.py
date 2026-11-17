@@ -75,14 +75,14 @@ def test_offers_permission_json_403(client):
     app.dependency_overrides.clear()
 
 
-def test_offers_html_login_502(client):
+def test_offers_html_login_403(client):
     def handler(request):
         return httpx.Response(403, text=HTML_LOGIN_PAGE, headers={"content-type": "text/html"})
 
     c, _ = make_app_client(handler, extra_overrides={get_keitaro_with_key: lambda: make_keitaro(handler)})
     r = c.get("/api/offers/25327")
-    assert r.status_code == 502
-    assert "IP" in r.json()["detail"]
+    assert r.status_code == 403
+    assert "denied" in r.json()["detail"]
     app.dependency_overrides.clear()
 
 

@@ -39,7 +39,7 @@ async def save_api_key(payload: ApiKeyIn, store: KeyStore = Depends(get_key_stor
     except KeitaroUnavailable:
         raise HTTPException(502, "Keitaro is unreachable, the key was not saved")
     except HTTPException as e:
-        # Любой ответ Keitaro (401/403/HTML-логин) — проблема ключа или доступа:
+        # Любой отказ Keitaro (401/403) — проблема ключа или доступа:
         # отдаём 400, ключ не сохраняем. Текст Keitaro секретов не содержит.
         raise HTTPException(400, f"The key was rejected: {e.detail}")
     finally:

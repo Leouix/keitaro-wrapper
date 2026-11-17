@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as FPath
 from sqlalchemy.orm import Session
@@ -5,7 +7,9 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..keitaro import KeitaroClient, KeitaroUnavailable
 from ..keybox import KeyStore, get_key_store, resolve_key
-from ..models import CampaignCache
+from ..models import CampaignCache, StreamOfferState, utcnow
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -124,15 +128,114 @@ async def get_campaign(
     return _whitelist(data)
 
 
+def sync_stream_offer_state(db: Session, campaign_id: int, streams) -> None:
+    """Сверка stream_offer_state с живым списком потоков кампании.
+
+    Живые оферы (в пришедшем payload) — upsert и снятие архива; наши живые
+    строки, которых в payload больше нет, — архив reason="keitaro" (уже
+    архивные не трогаем). Любая ошибка БД не должна ломать страницу —
+    вызывающий код оборачивает вызов в try/except.
+    """
+    if not isinstance(streams, list):
+        return
+    now = utcnow()
+    seen: set[tuple[int, int]] = set()
+    for st in streams:
+        if not isinstance(st, dict):
+            continue
+        try:
+            stream_id = int(st.get("id"))
+        except (TypeError, ValueError):
+            continue
+        st_campaign = st.get("campaign_id")
+        if st_campaign is None:
+            st_campaign = campaign_id  # fallback: кампания из пути
+        for o in st.get("offers") or []:
+            try:
+                offer_id = int(o.get("offer_id"))
+            except (TypeError, ValueError):
+                continue
+            seen.add((stream_id, offer_id))
+            row = (
+                db.query(StreamOfferState)
+                .filter(
+                    StreamOfferState.stream_id == stream_id,
+                    StreamOfferState.offer_id == offer_id,
+                )
+                .one_or_none()
+            )
+            if row is None:
+                row = StreamOfferState(stream_id=stream_id, offer_id=offer_id)
+                db.add(row)
+            row.campaign_id = int(st_campaign)
+            row.share = o.get("share")
+            row.state = o.get("state") or "active"
+            row.last_seen_at = now
+            row.archived_at = None
+            row.archive_reason = None
+    for row in (
+        db.query(StreamOfferState)
+        .filter(
+            StreamOfferState.campaign_id == campaign_id,
+            StreamOfferState.archived_at.is_(None),
+        )
+        .all()
+    ):
+        if (row.stream_id, row.offer_id) not in seen:
+            row.archived_at = now
+            row.archive_reason = "keitaro"
+    db.commit()
+
+
+@router.get("/{campaign_id}/streams/archive")
+async def get_campaign_streams_archive(
+    campaign_id: int = FPath(gt=0),
+    db: Session = Depends(get_db),
+):
+    """Архив удалённых оферов кампании: только локальная БД — без ключа,
+    без похода в Keitaro, работает и при недоступности Keitaro."""
+    rows = (
+        db.query(StreamOfferState)
+        .filter(
+            StreamOfferState.campaign_id == campaign_id,
+            StreamOfferState.archived_at.isnot(None),
+        )
+        .order_by(StreamOfferState.archived_at.desc())
+        .all()
+    )
+    return {
+        "archived": [
+            {
+                "stream_id": r.stream_id,
+                "offer_id": r.offer_id,
+                "share": r.share,
+                "state": r.state,
+                "archived_at": r.archived_at.isoformat() if r.archived_at else None,
+                "reason": r.archive_reason,
+            }
+            for r in rows
+        ]
+    }
+
+
 @router.get("/{campaign_id}/streams")
 async def get_campaign_streams(
     campaign_id: int = FPath(gt=0),
+    db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
     # Тело — ровно ответ Keitaro (список потоков); 404/403/502 маппит KeitaroClient,
     # недоступность (5xx/сеть после ретряев) переводим в 502 — UI ждёт
     # «Keitaro недоступен», а не 500 с трейсбеком.
     try:
-        return await keitaro.get_campaign_streams(campaign_id)
+        data = await keitaro.get_campaign_streams(campaign_id)
     except KeitaroUnavailable as e:
         raise HTTPException(502, "Keitaro unavailable") from e
+    try:
+        sync_stream_offer_state(db, campaign_id, data)
+    except Exception:
+        # Синхронизация — побочный эффект: БД не должна ломать страницу.
+        logger.exception(
+            "stream_offer_state sync failed for campaign %s", campaign_id
+        )
+    return data
