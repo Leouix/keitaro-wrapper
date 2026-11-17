@@ -1,23 +1,41 @@
-/* Keitaro wrapper — единый дизайн-язык для главной и страницы потоков. */
+/* Keitaro wrapper — единый дизайн-язык: минимализм, одна акцентная палитра,
+   плоские поверхности, токены вместо разрозненных значений. */
 
 :root {
-  --bg: #f3f6fa;
+  /* Поверхности и текст */
+  --bg: #f7f8fa;
   --card: #ffffff;
-  --border: #dbe2ea;
-  --text: #1f2933;
-  --muted: #5f6b7a;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --text: #111827;
+  --muted: #6b7280;
+  --row-hover: #f9fafb;
+
+  /* Акцент и фокус */
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
-  --error: #9a1c12;
+  --focus: #2563eb;
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.14);
+
+  /* Статусы */
+  --error: #b42318;
   --error-bg: #fef3f2;
-  --success: #05663a;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --success: #067647;
   --success-bg: #ecfdf3;
   --warn: #92400e;
   --warn-bg: #fffbeb;
-  --warn-border: #f5d97e;
-  --row-hover: #f5f8fd;
-  --info-bg: #eef2f7;
-  --focus: #1d4ed8;
+  --warn-border: #fde68a;
+  --info-bg: #f3f4f6;
+
+  /* Радиусы */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+
+  /* Движение: цвет и прозрачность — 180ms, взвешенная кривая из скилла. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * { box-sizing: border-box; }
@@ -29,103 +47,255 @@ body {
   min-height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ── Каркас страницы ─────────────────────────────────────────────── */
 
 .card {
   max-width: 760px;
-  margin: 40px auto 24px;
-  padding: 24px 22px 28px;
+  margin: 48px auto 32px;
+  padding: 28px 26px 32px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
-h1 { font-size: 1.35rem; margin: 0 0 4px; }
-h2 { font-size: 1.05rem; margin: 0 0 10px; }
+h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+h2 { font-size: 1rem; font-weight: 600; margin: 0; }
 
 .hint { color: var(--muted); font-size: 0.875rem; margin: 0 0 16px; }
 
-.status-line {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--success-bg);
-  color: var(--success);
-  font-size: 0.875rem;
-  margin: 0 0 14px;
+.page-head { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+
+.counter { color: var(--muted); font-size: 0.8125rem; margin: 0; }
+
+.back-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  margin-left: -10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  transition: background-color 180ms var(--ease-out), color 180ms var(--ease-out);
+}
+.back-link:hover { background: var(--info-bg); color: var(--text); }
+
+.loading { color: var(--muted); margin: 0; animation: pulse 1.4s var(--ease-out) infinite; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
-label { display: block; font-weight: 600; margin-bottom: 6px; }
+/* ── Поля ввода ──────────────────────────────────────────────────── */
+
+label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
 .field { margin-bottom: 16px; }
-.field input {
-  width: 100%;
-  max-width: 420px;
-  padding: 9px 12px;
+
+.field input,
+input[type="search"] {
+  height: 38px;
+  padding: 0 12px;
   font-size: 1rem;
   color: var(--text);
   background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
 }
-.field input[aria-invalid="true"] { border-color: var(--error); }
+.field input::placeholder { color: #9ca3af; }
+.field input:hover { border-color: #9ca3af; }
+.field input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+.field input[aria-invalid="true"] { border-color: var(--danger); }
+
+/* ── Кнопки ──────────────────────────────────────────────────────── */
 
 .btn {
-  display: inline-block;
-  padding: 9px 16px;
-  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 14px;
+  font-size: 0.875rem;
   font-weight: 600;
-  color: #474646;
-  border-radius: 8px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 180ms var(--ease-out),
+              border-color 180ms var(--ease-out),
+              color 180ms var(--ease-out),
+              transform 120ms var(--ease-out);
 }
+.btn:hover { background: var(--row-hover); border-color: #9ca3af; }
+.btn:active { transform: scale(0.98); }
 
-#send-btn.btn {
-  background: green;
+.btn-secondary { background: #fff; border-color: var(--border-strong); color: var(--text); }
+
+/* Главная страница и панель отправки: единственная primary-кнопка. */
+#send-btn.btn,
+#save-btn.btn {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 0.9375rem;
   color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
 }
+#send-btn.btn:hover,
+#save-btn.btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
 
 .btn:disabled {
-  opacity: 0.4;
-  background: #ccc;
-  color: #fff;
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn:disabled:hover { background: #fff; border-color: var(--border-strong); }
+#send-btn.btn:disabled:hover,
+#save-btn.btn:disabled:hover { background: var(--primary); border-color: var(--primary); }
+
+/* Компактные кнопки в колонке «Действие»: не ломают высоту строки. */
+.btn-sm {
+  height: auto;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  border-radius: 6px;
 }
 
-#send-btn.btn:disabled {
-  opacity: 0.4;
-  background: #ccc;
-  color: #fff;
+/* Опасное действие. В таблице — тихая красная кнопка без заливки,
+   в подтверждении отправки — filled. */
+.btn-danger {
+  min-width: 90px;
+  color: var(--danger);
+  background: transparent;
+  border-color: transparent;
 }
+.btn-danger:hover { background: var(--error-bg); border-color: transparent; }
+.btn-danger:disabled:hover { background: transparent; }
+.send-warning-actions .btn-danger {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.send-warning-actions .btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
 
-.link { color: var(--primary); }
-a:focus-visible, button:focus-visible, input:focus-visible, [tabindex="-1"]:focus {
+.link { color: var(--primary); text-decoration: none; }
+.link:hover { text-decoration: underline; }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+[tabindex="-1"]:focus {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
+/* ── Сообщения и статусы ─────────────────────────────────────────── */
+
 .message {
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 0.9375rem;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 0.875rem;
   margin: 14px 0 0;
 }
 .message.error { background: var(--error-bg); color: var(--error); }
 .message.success { background: var(--success-bg); color: var(--success); }
 .message.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
-.message.info {  color: var(--text); }
+.message.info { color: var(--muted); padding: 12px 0; }
 
-.error-actions { margin-top: 12px; }
-.error-actions .btn { margin-right: 10px; }
+.status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin: 0 0 14px;
+}
+/* Иконка-точка перед текстом статуса — чистый CSS вместо иконочного шрифта. */
+.status-line::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-line.error { background: var(--error-bg); color: var(--error); }
 
-/* Страница кампаний: фильтр, счётчик, кликабельные строки. */
-.filter-row { margin-bottom: 6px; }
-.filter-row input { max-width: 420px; }
+.error-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
 
-.counter { color: var(--muted); font-size: 0.875rem; margin: 0 0 10px; }
+/* ── Таблицы ─────────────────────────────────────────────────────── */
+
+.table-wrap { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+
+caption {
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  padding: 0 0 8px;
+}
+
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-strong);
+  padding-top: 0;
+}
+tbody tr { transition: background-color 180ms var(--ease-out); }
+tbody tr:hover { background: var(--row-hover); }
+tbody tr:last-child td { border-bottom: none; }
+
+.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.wrap-anywhere { overflow-wrap: anywhere; }
+/* Колонка «Поток»: имя («Flow 1») всегда одной строкой, таблица скроллится. */
+.nowrap { white-space: nowrap; }
 
 tr { position: relative; }
 
@@ -147,86 +317,71 @@ tr { position: relative; }
 
 .alias {
   display: block;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 400;
   color: var(--muted);
 }
-
-.divider { border: none; border-top: 1px solid var(--border); margin: 22px 0 18px; }
-
-/* Страница потоков */
-.page-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
-.back-link { font-size: 0.875rem; }
-
-.loading { color: var(--muted); margin: 0; }
-
-.table-wrap { overflow-x: auto; }
-
-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
-
-caption {
-  text-align: left;
-  color: var(--muted);
-  font-size: 0.875rem;
-  padding: 0 0 8px;
-}
-
-th, td {
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-}
-th {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--muted);
-  border-bottom: 2px solid var(--border);
-}
-.num { text-align: right; white-space: nowrap; }
-
-.wrap-anywhere { overflow-wrap: anywhere; }
-/* Колонка «Поток»: имя («Flow 1») всегда одной строкой, таблица скроллится. */
-.nowrap { white-space: nowrap; }
 
 .offer-id { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 td em { color: var(--error); font-style: normal; }
 
-.no-offers { color: var(--muted); font-size: 0.875rem; margin: 12px 0 0; }
+.no-offers { color: var(--muted); font-size: 0.8125rem; margin: 12px 0 0; }
 
 .state-list { margin: 8px 0 0; padding-left: 20px; }
 
-/* Глобальная панель отправки черновика: одна primary-кнопка над списком потоков. */
+.divider { border: none; border-top: 1px solid var(--border); margin: 24px 0 16px; }
+
+/* ── Страница кампаний ───────────────────────────────────────────── */
+
+.filter-row { margin-bottom: 6px; }
+.filter-row input { max-width: 420px; }
+
+/* ── Страница потоков ────────────────────────────────────────────── */
+
+/* Панель отправки: одна primary-кнопка и счётчик изменений, отделены чертой. */
 .draft-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 16px;
-  margin: 0 0 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 20px;
 }
-.draft-count { color: var(--muted); font-size: 0.875rem; }
+.draft-count {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--info-bg);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
 
-/* Несохранённые изменения (черновик добавления + отложенные удаление/возврат):
-   карточка, форма и поля ввода ID оффера подсвечены.
-   Класс has-draft ставит app.js, только пока есть ожидающие изменения. */
-.card.has-draft { background-color: #ffdbc287; }
-.card.has-draft .offer-form { background-color: #e8c9b46b; }
-.card.has-draft .offer-form input { background-color: #ffdbc287; }
+/* Предупреждение перед отправкой потока без оферов: инлайн-блок под кнопкой,
+   жёлтая warn-палитра, не dialog/confirm(). */
+.send-warning {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-md);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 0.875rem;
+}
+.send-warning-text { margin: 0; }
+.send-warning-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px; }
 
-/* Каждый поток — своя секция: заголовок, таблица и форма добавления. */
-.stream-section { 
-    border: 1px solid #ccc;
-    padding-top: 20px;
-    border-top: 1px solid var(--border);
-    border-radius: 10px;
-    margin: 15px 0;
-    padding: 15px;
+/* Каждый поток — своя секция-карточка: заголовок, таблица, форма добавления. */
+.stream-section {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin: 0 0 16px;
 }
 
 .stream-meta {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 400;
   color: var(--muted);
   margin-left: 8px;
@@ -234,10 +389,9 @@ td em { color: var(--error); font-style: normal; }
 
 /* Форма добавления офера у landings-потока: живой поиск по ID. */
 .offer-form {
-  padding: 14px 14px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--row-hover);
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
   margin-top: 14px;
 }
 .offer-form-row {
@@ -250,110 +404,78 @@ td em { color: var(--error); font-style: normal; }
 .offer-form-row .offer-search-field input { max-width: none; }
 
 .toolbar-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-/* Выравниваем кнопку по строке ввода (высота label + отступ). */
-.offer-form-row .toolbar-actions { margin-top: 1.875rem; }
+/* Выравниваем кнопку по строке ввода: label 20px + отступ 6px → сдвиг 12px. */
+.offer-form-row .toolbar-actions { margin-top: 12px; }
 
 .offer-hint {
   min-height: 1.3em;
   margin: 6px 0 0;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
 .offer-hint-found { color: var(--success); }
 .offer-hint-error { color: var(--error); }
 
-.status-line.error { background: var(--error-bg); color: var(--error); }
+/* ── Черновик и ожидающие изменения ──────────────────────────────── */
 
-/* Предупреждение перед отправкой потока без оферов: инлайн-блок под кнопкой
-   «Отправить в Кейтаро», жёлтая warn-палитра бейджей, не dialog/confirm(). */
-.send-warning {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--warn-border);
-  border-radius: 8px;
-  background: var(--warn-bg);
-  color: var(--warn);
-  font-size: 0.9375rem;
-}
-.send-warning-text { margin: 0; }
-.send-warning-actions { margin-top: 10px; }
-.send-warning-actions .btn { margin-right: 10px; }
+/* Несохранённые изменения: вместо заливки всей карточки — янтарная рамка
+   и мягкая подложка у формы. Класс has-draft ставит app.js, только пока
+   есть ожидающие изменения. */
+.card.has-draft { border-color: var(--warn-border); }
+.card.has-draft .offer-form { background: var(--warn-bg); }
+.card.has-draft .offer-form input { background: #fff; }
 
-/* Компактные кнопки в колонке «Действие»: не ломают высоту строки и не переносятся. */
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 0.8125rem;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-/* Опасное действие — удаление офера из потока. */
-.btn-danger { 
-  color: #4e4e4e;
-  background: #ffffff;
-  border-color: #393939; 
-  min-width: 90px;
-}
-
-.btn-danger:disabled { background: #e2b4b0; border-color: #e2b4b0; }
+/* Ожидающая строка (pending remove / pending add). Снимается кнопкой
+   «Отменить» или «Отправить в Кейтаро». */
+tr.pending-row { background: var(--warn-bg); }
+tr.pending-row:hover { background: #fef3c7; }
 
 /* Архивные строки: приглушены, после живых строк той же таблицы. */
-
 .archived-row td { color: var(--muted); }
 
-/* Ожидающая строка (pending remove / pending add): жёлтый фон, как у черновика.
-   Снимается кнопкой «Отменить» или «Отправить в Кейтаро». */
-tr.pending-row { background-color: #ffdbc287; }
-
 /* Бейдж ожидающего изменения: «к удалению», «вернётся в поток», «черновик». */
-.pending-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 8px;
-  border: 1px solid var(--warn-border);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--warn);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  vertical-align: 1px;
-}
-
+.pending-badge,
 .archived-badge {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 8px;
-  border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--info-bg);
-  color: var(--muted);
   font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   vertical-align: 1px;
+}
+.pending-badge {
+  border: 1px solid var(--warn-border);
+  background: #fff;
+  color: var(--warn);
+}
+.archived-badge {
+  border: 1px solid var(--border);
+  background: var(--info-bg);
+  color: var(--muted);
 }
 
 /* Ошибка последней операции по конкретному потоку — под его таблицей. */
 .stream-error { margin: 10px 0 0; }
 
-/* Маленькие экраны: компактнее, длинные имена переносятся, таблицу можно прокрутить. */
+/* ── Маленькие экраны ────────────────────────────────────────────── */
+
 @media (max-width: 560px) {
-  .card { margin: 12px 10px; padding: 16px 14px 20px; }
+  .card { margin: 12px 10px; padding: 20px 14px 24px; }
   body { font-size: 15px; }
-  th, td { padding: 7px 8px; }
-  table { font-size: 0.875rem; }
+  th, td { padding: 8px; }
   /* Форма офера на узком экране: поле в столбик, кнопка без отступа-выравнивания. */
-  .offer-form { padding: 12px 10px 10px; }
+  .offer-form { padding: 12px 10px; }
   .offer-form-row { gap: 8px; }
   .offer-form-row .offer-search-field { flex: 1 1 100%; }
   .offer-form-row .toolbar-actions { margin-top: 0; }
   /* Предупреждение на узком экране: кнопки в столбик на всю ширину. */
-  .send-warning-actions { display: flex; flex-direction: column; gap: 8px; }
-  .send-warning-actions .btn { margin-right: 0; }
-  /* Колонка офера (первая) не сжимается до 3 символов: остальное прокручивается внутри обёртки. */
+  .send-warning-actions { flex-direction: column; }
+  .send-warning-actions .btn { justify-content: center; }
+  /* Колонка офера (первая) не сжимается до 3 символов: остальное прокручивается. */
   body[data-page="streams"] th:nth-child(1),
   body[data-page="streams"] td:nth-child(1) { min-width: 14rem; }
   /* Таблица кампаний не сжимается: колонки читаются, лишнее прокручивается. */
