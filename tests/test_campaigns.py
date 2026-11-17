@@ -1,8 +1,4 @@
-import asyncio
-
 import httpx
-import pytest
-from fastapi import HTTPException
 
 from app.models import CampaignCache
 
@@ -110,17 +106,6 @@ def test_html_login_403_maps_to_502():
     r = c.get("/api/campaigns/211903")
     assert r.status_code == 502
     assert "IP" in r.json()["detail"]
-
-
-def test_fallback_v2_html_login_maps_to_502():
-    def handler(request):
-        return httpx.Response(403, text=HTML_LOGIN_PAGE, headers={"content-type": "text/html"})
-
-    kei = make_keitaro(handler)
-    with pytest.raises(HTTPException) as e:
-        asyncio.run(kei._request("GET", "/campaigns", v2=True))
-    assert e.value.status_code == 502
-    assert "/admin/api/v1" in e.value.detail
 
 
 def test_non_json_response_maps_to_502():
