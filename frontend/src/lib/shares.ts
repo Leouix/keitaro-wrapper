@@ -184,9 +184,9 @@ export function pendingAddBadgeText(
   streamId: number,
   offerId: number,
   archive: ArchivedEntry[],
-): 'вернётся в поток' | 'черновик' {
+): 'will return' | 'draft' {
   const fromArchive = archive.some(
     (a) => a.stream_id === streamId && a.offer_id === offerId,
   );
-  return fromArchive ? 'вернётся в поток' : 'черновик';
+  return fromArchive ? 'will return' : 'draft';
 }

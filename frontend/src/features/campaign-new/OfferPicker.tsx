@@ -44,8 +44,8 @@ function parseOfferIds(raw: string): number[] {
     .filter((id, i, all) => all.indexOf(id) === i);
 }
 
-const WARN_FORBIDDEN = 'нет прав у ключа, проверит сервер';
-const WARN_UNAVAILABLE = 'Keitaro недоступен, добавлен без проверки';
+const WARN_FORBIDDEN = 'no permission for the key — the server will check';
+const WARN_UNAVAILABLE = 'Keitaro is unavailable — added without a check';
 
 /**
  * Мультивыбор офферов, как страны: ввод ID → проверка при вводе (дебаунс,
@@ -81,7 +81,7 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
       );
     } else if (result.status === 404) {
       onChangeRef.current(chips.filter((c) => c.id !== id));
-      setLocalError(`Оффер ${id} не найден в Keitaro.`);
+      setLocalError(`Offer ${id} not found in Keitaro.`);
     } else if (result.status === 403) {
       onChangeRef.current(chips.map((c, j) => (j === i ? { ...c, warn: WARN_FORBIDDEN } : c)));
     } else {
@@ -114,7 +114,7 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
     }
     if (/[^\d\s,;]/.test(q)) {
       setLookup(null);
-      setLocalError('Введите ID оффера — положительное число.');
+      setLocalError('Enter the offer ID — a positive number.');
       return;
     }
     const ids = parseOfferIds(q);
@@ -141,12 +141,12 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
     const q = query.trim();
     if (!q) return;
     if (/[^\d\s,;]/.test(q)) {
-      setLocalError('Введите ID оффера — положительное число.');
+      setLocalError('Enter the offer ID — a positive number.');
       return;
     }
     const ids = parseOfferIds(q);
     if (!ids.length) {
-      setLocalError('Введите ID оффера — положительное число.');
+      setLocalError('Enter the offer ID — a positive number.');
       return;
     }
     const chips = [...selectedRef.current];
@@ -155,11 +155,11 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
 
     for (const offerId of ids) {
       if (chips.some((c) => c.id === offerId)) {
-        problems.push(`Оффер ${offerId} уже добавлен.`);
+        problems.push(`Offer ${offerId} is already added.`);
         continue;
       }
       if (chips.length >= max) {
-        problems.push(`Не больше ${max} офферов.`);
+        problems.push(`No more than ${max} offers.`);
         break;
       }
       // Результат из кэша (уже проверялся) или из живой подсказки; запрос не повторяется.
@@ -170,7 +170,7 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
           ? lookup
           : null;
       if (known?.status === 404) {
-        problems.push(`Оффер ${offerId} не найден в Keitaro.`);
+        problems.push(`Offer ${offerId} not found in Keitaro.`);
         continue;
       }
       chips.push({
@@ -226,7 +226,7 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
   return (
     <div className={s.wrap}>
       {selected.length > 0 && (
-        <ul className={s.chips} aria-label="Выбранные офферы">
+        <ul className={s.chips} aria-label="Selected offers">
           {selected.map((chip, i) => (
             <li
               key={chip.id}
@@ -240,7 +240,7 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
               <button
                 type="button"
                 className={s.chipRemove}
-                aria-label={`Убрать оффер ${chip.id}`}
+                aria-label={`Remove offer ${chip.id}`}
                 onClick={() => remove(chip.id)}
               >
                 ×
@@ -250,7 +250,7 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
         </ul>
       )}
       {selected.length >= 2 && (
-        <p className={s.sharesNote}>Веса равные, сумма 100.</p>
+        <p className={s.sharesNote}>Weights are equal, sum 100.</p>
       )}
       <input
         id={id}
@@ -259,7 +259,7 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
         inputMode="numeric"
         autoComplete="off"
         spellCheck={false}
-        placeholder={full ? `Достигнут максимум: ${max} офферов` : 'ID оффера, например 18813 или 18813, 18814'}
+        placeholder={full ? `Maximum reached: ${max} offers` : 'Offer ID, e.g. 18813 or 18813, 18814'}
         aria-describedby={hintId}
         aria-invalid={shownError ? true : undefined}
         disabled={full}
@@ -284,18 +284,18 @@ export function OfferPicker({ selected, onChange, id, hintId, error, max }: Prop
       >
         {shownError ??
           (lookup?.busy
-            ? 'Проверяем…'
+            ? 'Checking…'
             : lookup?.status === 'dup'
-              ? `Оффер ${lookup.id} уже добавлен.`
+              ? `Offer ${lookup.id} is already added.`
               : lookup?.status === 200
-                ? `Оффер ${lookup.id}: ${lookup.name || 'без названия'}${lookup.state ? ` — ${lookup.state}` : ''}`
+                ? `Offer ${lookup.id}: ${lookup.name || 'no name'}${lookup.state ? ` — ${lookup.state}` : ''}`
                 : lookup?.status === 404
-                  ? `Оффер ${lookup.id} не найден в Keitaro.`
+                  ? `Offer ${lookup.id} not found in Keitaro.`
                   : lookup?.status === 403
-                    ? `Оффер ${lookup.id}: нет прав у ключа — добавим, сервер проверит при создании.`
+                    ? `Offer ${lookup.id}: no permission for the key — added anyway, the server will check at creation.`
                     : lookup && (lookup.status === 502 || lookup.status === 0)
-                      ? `Оффер ${lookup.id}: Keitaro недоступен — добавим без проверки.`
-                      : `От 1 до ${max} офферов, ввод через запятую; проверка при вводе.`)}
+                      ? `Offer ${lookup.id}: Keitaro is unavailable — added without a check.`
+                      : `From 1 to ${max} offers, comma-separated; checked as you type.`)}
       </p>
     </div>
   );

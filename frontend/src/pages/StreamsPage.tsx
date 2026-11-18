@@ -12,7 +12,7 @@ export function StreamsPage() {
 
   useEffect(() => {
     if (!valid) {
-      document.title = 'Потоки кампании — Keitaro';
+      document.title = 'Campaign flows — Keitaro';
       errorRef.current?.focus();
     }
   }, [valid]);
@@ -23,14 +23,14 @@ export function StreamsPage() {
         <section className="card">
           <PageHeader
             crumbs={[
-              { label: 'Главная', to: '/' },
-              { label: 'Кампании', to: '/campaigns' },
-              { label: 'Потоки' },
+              { label: 'Home', to: '/' },
+              { label: 'Campaigns', to: '/campaigns' },
+              { label: 'Flows' },
             ]}
-            title="Потоки кампании"
+            title="Campaign flows"
           />
           <div ref={errorRef} role="alert" tabIndex={-1}>
-            <Message kind="error">Некорректный адрес: ID кампании должен быть числом.</Message>
+            <Message kind="error">Invalid URL: the campaign ID must be a number.</Message>
           </div>
         </section>
       </div>

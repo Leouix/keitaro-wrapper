@@ -1,5 +1,5 @@
-// Регрессионный тест: набор ID по цифре с паузами не должен порождать запросы
-// на префиксах и вспышки красной ошибки; устойчивый ввод — один запрос и отложенный показ ошибки.
+// Regression test: typing an ID digit by digit with pauses must not fire requests
+// on prefixes or flash a red error; steady input — one request and a delayed error.
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { StreamCard } from './StreamCard';
@@ -44,7 +44,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('StreamCard — кнопка-пин веса', () => {
+describe('StreamCard — the weight pin button', () => {
   const liveStream: Stream = {
     id: 1313478,
     name: 'Flow 1',
@@ -62,15 +62,15 @@ describe('StreamCard — кнопка-пин веса', () => {
     );
   }
 
-  it('живой офер: кнопка есть, aria-pressed=false, подписи и клик отдают текущий вес', () => {
+  it('live offer: the button is present, aria-pressed=false, labels and click pass the current weight', () => {
     const onPinToggle = vi.fn();
     renderCard({ stream: liveStream, onPinToggle });
 
     const btn = pinBtn(10)!;
     expect(btn).toBeTruthy();
     expect(btn.getAttribute('aria-pressed')).toBe('false');
-    expect(btn.getAttribute('aria-label')).toBe('Зафиксировать вес офера #10 в потоке Flow 1');
-    expect(btn.getAttribute('title')).toContain('Зафиксировать вес 60%');
+    expect(btn.getAttribute('aria-label')).toBe('Pin the weight of offer #10 in flow Flow 1');
+    expect(btn.getAttribute('title')).toContain('Pin weight 60%');
     expect(btn.querySelector('img')).toBeTruthy();
 
     fireEvent.click(btn);
@@ -79,7 +79,7 @@ describe('StreamCard — кнопка-пин веса', () => {
     expect(onPinToggle.mock.calls[0][2]).toBe(60);
   });
 
-  it('зафиксированный офер: aria-pressed=true, подпись «Снять фиксацию…», иконка pined', () => {
+  it('pinned offer: aria-pressed=true, the "Unpin…" label, the pined icon', () => {
     renderCard({
       stream: liveStream,
       pins: [{ stream_id: 1313478, offer_id: 10, share: 60 }],
@@ -88,10 +88,10 @@ describe('StreamCard — кнопка-пин веса', () => {
 
     const btn = pinBtn(10)!;
     expect(btn.getAttribute('aria-pressed')).toBe('true');
-    expect(btn.getAttribute('aria-label')).toBe('Снять фиксацию веса офера #10 в потоке Flow 1');
+    expect(btn.getAttribute('aria-label')).toBe('Unpin the weight of offer #10 in flow Flow 1');
   });
 
-  it('недоступна: архивная строка, pending-remove, доля «—»; доступна у pending-add', () => {
+  it('unavailable: an archived row, pending-remove, a "—" share; available for pending-add', () => {
     renderCard({
       stream: liveStream,
       pendingRows: [
@@ -113,71 +113,71 @@ describe('StreamCard — кнопка-пин веса', () => {
   });
 });
 
-describe('StreamCard: набор ID по цифре', () => {
-  it('«4516» по цифре с паузами 200–400 мс: один запрос на финальное значение, без красного на префиксах', async () => {
+describe('StreamCard: typing an ID digit by digit', () => {
+  it('"4516" typed digit by digit with 200–400 ms pauses: one request for the final value, no red on prefixes', async () => {
     // 4516 существует, всё остальное — 404.
     const fetchMock = vi.fn(async (url: string) => {
       const id = Number(url.replace('/api/offers/', ''));
-      return id === 4516 ? json(200, { id: 4516, name: 'Офер 4516', payout_value: '1.5', payout_currency: 'USD' }) : json(404, null);
+      return id === 4516 ? json(200, { id: 4516, name: 'Offer 4516', payout_value: '1.5', payout_currency: 'USD' }) : json(404, null);
     });
     vi.stubGlobal('fetch', fetchMock);
     renderCard();
 
-    // Набор по цифре, паузы в диапазоне Льва (200–400 мс).
+    // Typed digit by digit, pauses in the 200–400 ms range.
     fireEvent.change(input(), { target: { value: '4' } });
     await sleep(350);
     expect(fetchMock).not.toHaveBeenCalled(); // 350 < 500: запроса ещё нет
-    expect(hint()).toBe('Ищем оффер…');
+    expect(hint()).toBe('Looking up the offer…');
     expect(hintEl().className).not.toMatch(/error/i);
 
     fireEvent.change(input(), { target: { value: '45' } });
     await sleep(250);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(hint()).toBe('Ищем оффер…');
+    expect(hint()).toBe('Looking up the offer…');
 
     fireEvent.change(input(), { target: { value: '451' } });
     await sleep(350);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(hint()).toBe('Ищем оффер…');
+    expect(hint()).toBe('Looking up the offer…');
 
     fireEvent.change(input(), { target: { value: '4516' } });
-    // Пауза 400 мс — всё ещё нет запроса и нет ошибки.
+    // A 400 ms pause — still no request and no error.
     await sleep(400);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(hint()).not.toMatch(/не найден/);
+    expect(hint()).not.toMatch(/not found/);
 
-    // Финальный запрос — ровно один, на 4516.
+    // The final request — exactly one, for 4516.
     expect(await screen.findByText(/#4516/, {}, { timeout: 3000 })).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe('/api/offers/4516');
-    expect(hint()).not.toMatch(/не найден/);
+    expect(hint()).not.toMatch(/not found/);
   });
 
-  it('устойчивый ввод несуществующего ID: ошибка показывается после задержки', async () => {
+  it('a steady input of a nonexistent ID: the error appears after the delay', async () => {
     const fetchMock = vi.fn(async () => json(404, null));
     vi.stubGlobal('fetch', fetchMock);
     renderCard();
 
     fireEvent.change(input(), { target: { value: '4517' } });
-    // Сразу после запроса ошибки ещё нет (отложенный показ).
+    // Right after the request there is no error yet (delayed display).
     await sleep(700);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(hint()).not.toMatch(/не найден/);
-    // Через ERROR_HINT_DELAY_MS после ответа — появляется.
-    expect(await screen.findByText('Офер с ID 4517 не найден', {}, { timeout: 2000 })).toBeTruthy();
+    expect(hint()).not.toMatch(/not found/);
+    // ERROR_HINT_DELAY_MS after the response — it appears.
+    expect(await screen.findByText('Offer with ID 4517 not found', {}, { timeout: 2000 })).toBeTruthy();
   });
 
-  it('ошибка префикса не показывается, если ввод продолжился', async () => {
+  it('the prefix error is not shown if typing continued', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       const id = Number(url.replace('/api/offers/', ''));
-      return id === 4516 ? json(200, { id: 4516, name: 'Офер 4516' }) : json(404, null);
+      return id === 4516 ? json(200, { id: 4516, name: 'Offer 4516' }) : json(404, null);
     });
     vi.stubGlobal('fetch', fetchMock);
     renderCard();
 
-    // Пауза >500 мс на «4» → запрос уходит, 404 приходит и откладывает ошибку
-    // на ERROR_HINT_DELAY_MS. Продолжаем ввод до того, как она сработает, —
-    // красный текст так и не показывается.
+    // A >500 ms pause on "4" → the request fires, 404 comes back and delays the error
+    // by ERROR_HINT_DELAY_MS. We keep typing before it fires —
+    // the red text is never shown.
     fireEvent.change(input(), { target: { value: '4' } });
     await sleep(600);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -188,9 +188,9 @@ describe('StreamCard: набор ID по цифре', () => {
     await sleep(300);
     fireEvent.change(input(), { target: { value: '4516' } });
     await sleep(400);
-    expect(hint()).not.toMatch(/не найден/); // окно ошибки префикса уже прошло
+    expect(hint()).not.toMatch(/not found/); // the prefix error window has already passed
 
-    // Финальный запрос на «4516» — и найденная подсказка.
+    // The final request for "4516" — and the found hint.
     expect(await screen.findByText(/#4516/, {}, { timeout: 3000 })).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(2); // «4» и финальный «4516»
     expect(hint()).toMatch(/#4516/);

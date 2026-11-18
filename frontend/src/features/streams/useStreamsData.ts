@@ -128,16 +128,16 @@ export function useStreamsData(campaignId: string): StreamsData {
       if (status !== 200 || !Array.isArray(body)) {
         if (refresh) return { ok: false, status, body };
         if (status === 409) {
-          setPageError({ text: 'Сначала укажите API key.', kind: 'home' });
+          setPageError({ text: 'Set the API key first.', kind: 'home' });
         } else if (status === 404) {
-          setPageError({ text: 'Кампания не найдена.', kind: 'campaigns' });
+          setPageError({ text: 'Campaign not found.', kind: 'campaigns' });
         } else if (status === 502) {
-          setPageError({ text: 'Keitaro недоступен.', kind: 'retry' });
+          setPageError({ text: 'Keitaro is unavailable.', kind: 'retry' });
         } else if (status === 0) {
-          setPageError({ text: 'Сеть недоступна.', kind: 'retry' });
+          setPageError({ text: 'Network unavailable.', kind: 'retry' });
         } else {
           setPageError({
-            text: detailToText((body as { detail?: unknown } | null)?.detail, `Ошибка загрузки (код ${status}).`),
+            text: detailToText((body as { detail?: unknown } | null)?.detail, `Failed to load (status ${status}).`),
             kind: 'retry',
           });
         }

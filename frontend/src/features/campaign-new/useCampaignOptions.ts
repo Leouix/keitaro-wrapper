@@ -35,16 +35,16 @@ export function useCampaignOptions(): OptionsLoad {
         return;
       }
       if (status === 409) {
-        setError('Сначала укажите API key.');
+        setError('Set the API key first.');
         setNeedKey(true);
       } else if (status === 502) {
-        setError('Keitaro недоступен.');
+        setError('Keitaro is unavailable.');
         setNeedKey(false);
       } else if (status === 0) {
-        setError('Сеть недоступна.');
+        setError('Network unavailable.');
         setNeedKey(false);
       } else {
-        setError(detail || `Не удалось загрузить справочники (код ${status}).`);
+        setError(detail || `Failed to load the dictionaries (status ${status}).`);
         setNeedKey(false);
       }
       setOptions(null);

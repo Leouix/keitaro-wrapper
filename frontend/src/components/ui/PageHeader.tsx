@@ -17,7 +17,7 @@ export function PageHeader({
   return (
     <div className="page-head">
       {crumbs.length > 0 && (
-        <nav className="breadcrumbs" aria-label="Хлебные крошки">
+        <nav className="breadcrumbs" aria-label="Breadcrumbs">
           <ol>
             {crumbs.map((crumb, i) => {
               const last = i === crumbs.length - 1;

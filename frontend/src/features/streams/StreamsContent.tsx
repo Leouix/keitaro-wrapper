@@ -114,7 +114,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       // Данные перечитаны — старые ошибки операций больше не актуальны.
       setStreamErrors(new Map());
       setRefreshStatus({
-        text: `Обновлено в ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`,
+        text: `Updated at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`,
         error: false,
       });
     } else {
@@ -128,7 +128,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
   }, [load, refreshing, sending]);
 
   // Заголовок и document.title: до ответа — ID, после — название кампании.
-  const title = `Потоки кампании ${campaignName || campaignId}`;
+  const title = `Campaign flows: ${campaignName || campaignId}`;
 
   // Ссылка на кампанию в админке Keitaro: внешняя, в новой вкладке.
   const keitaroAdminHref = `https://tlgk.host/admin/#!/campaign/${campaignId}/main`;
@@ -221,7 +221,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         setStreamErrors((prev) =>
           new Map(prev).set(
             streamId,
-            pendingChangeErrorText(status, body, 'Не удалось пометить офер к удалению.'),
+            pendingChangeErrorText(status, body, 'Failed to mark the offer for removal.'),
           ),
         );
       }
@@ -262,7 +262,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         setStreamErrors((prev) =>
           new Map(prev).set(
             streamId,
-            pendingChangeErrorText(status, body, 'Не удалось пометить офер к возврату.'),
+            pendingChangeErrorText(status, body, 'Failed to mark the offer for return.'),
           ),
         );
       }
@@ -302,7 +302,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       } else {
         setPending(() => [...updated, row]);
         setStreamErrors((prev) =>
-          new Map(prev).set(streamId, pendingChangeErrorText(status, body, 'Не удалось отменить изменение.')),
+          new Map(prev).set(streamId, pendingChangeErrorText(status, body, 'Failed to cancel the change.')),
         );
       }
 
@@ -343,7 +343,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         setStreamErrors((prev) =>
           new Map(prev).set(
             streamId,
-            pendingChangeErrorText(status, body, 'Не удалось пометить офер к добавлению.'),
+            pendingChangeErrorText(status, body, 'Failed to mark the offer for addition.'),
           ),
         );
       }
@@ -397,7 +397,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         setStreamErrors((prev) =>
           new Map(prev).set(
             streamId,
-            pinsErrorText(status, body, 'Не удалось изменить фиксацию веса.'),
+            pinsErrorText(status, body, 'Failed to change the pinned weight.'),
           ),
         );
       }
@@ -426,7 +426,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
     () =>
       emptyTargets
         .map((sid) => streamName(streams.find((x) => x.id === sid) ?? { id: sid }))
-        .map((n) => `Поток «${n}» останется без оферов и перестанет принимать трафик.`)
+        .map((n) => `Flow "${n}" will be left without offers and stop receiving traffic.`)
         .join(' '),
     [emptyTargets, streams],
   );
@@ -511,14 +511,14 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         failed += 1;
         const text = applyErrorText(status, body);
         setStreamErrors((prev) => new Map(prev).set(sid, text));
-        errors.push(`Поток ${streamName(streams.find((x) => x.id === sid) ?? { id: sid })}: ${text}`);
+        errors.push(`Flow ${streamName(streams.find((x) => x.id === sid) ?? { id: sid })}: ${text}`);
       }
       busyDelete(sid);
     }
     setSending(false);
 
-    const parts = [...errors, `Потоков обновлено: ${applied}`];
-    if (failed) parts.push(`Не отправлено: ${failed}`);
+    const parts = [...errors, `Flows updated: ${applied}`];
+    if (failed) parts.push(`Not sent: ${failed}`);
     setSendStatus({ text: parts.join(' · '), error: errors.length > 0 });
 
     // Кнопка ушла в disabled при отправке — возвращаем фокус на статус, а не в «никуда».
@@ -553,16 +553,16 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         <section className="card">
           <PageHeader
             crumbs={[
-              { label: 'Главная', to: '/' },
-              { label: 'Кампании', to: '/campaigns' },
-              { label: 'Потоки' },
+              { label: 'Home', to: '/' },
+              { label: 'Campaigns', to: '/campaigns' },
+              { label: 'Flows' },
             ]}
-            title="Потоки кампании"
+            title="Campaign flows"
             meta={
               <p className="counter">
-                ID кампании: {campaignId} ·{' '}
+                Campaign ID: {campaignId} ·{' '}
                 <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
-                  открыть в Keitaro ↗
+                  open in Keitaro ↗
                 </a>
               </p>
             }
@@ -572,16 +572,16 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
             <div className={s.errorActions}>
               {pageError.kind === 'home' && (
                 <Link to="/" className="link">
-                  Указать API key на главной
+                  Set the API key on the home page
                 </Link>
               )}
               {pageError.kind === 'campaigns' && (
                 <Link to="/campaigns" className="link">
-                  К списку кампаний
+                  Back to campaigns
                 </Link>
               )}
               {pageError.kind === 'retry' && (
-                <Button onClick={() => void reload()}>Повторить</Button>
+                <Button onClick={() => void reload()}>Retry</Button>
               )}
             </div>
           </div>
@@ -596,23 +596,23 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         <section className="card wide">
           <PageHeader
             crumbs={[
-              { label: 'Главная', to: '/' },
-              { label: 'Кампании', to: '/campaigns' },
-              { label: 'Потоки' },
+              { label: 'Home', to: '/' },
+              { label: 'Campaigns', to: '/campaigns' },
+              { label: 'Flows' },
             ]}
             title={title}
             meta={
               <p className="counter">
-                ID кампании: {campaignId} ·{' '}
+                Campaign ID: {campaignId} ·{' '}
                 <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
-                  открыть в Keitaro ↗
+                  open in Keitaro ↗
                 </a>
               </p>
             }
           />
           <div aria-busy="true">
             <p className="sr-only" role="status">
-              Загружаем потоки…
+              Loading flows…
             </p>
             <SkeletonRows rows={3} />
           </div>
@@ -627,21 +627,21 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         <section className="card">
           <PageHeader
             crumbs={[
-              { label: 'Главная', to: '/' },
-              { label: 'Кампании', to: '/campaigns' },
-              { label: 'Потоки' },
+              { label: 'Home', to: '/' },
+              { label: 'Campaigns', to: '/campaigns' },
+              { label: 'Flows' },
             ]}
             title={title}
             meta={
               <p className="counter">
-                ID кампании: {campaignId} ·{' '}
+                Campaign ID: {campaignId} ·{' '}
                 <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
-                  открыть в Keitaro ↗
+                  open in Keitaro ↗
                 </a>
               </p>
             }
           />
-          <EmptyState title="В этой кампании нет потоков." />
+          <EmptyState title="This campaign has no flows." />
           {/* Обновление и из empty-state: поток, добавленный в Кейтаро,
               появляется без перезагрузки страницы. */}
           <div className={s.errorActions}>
@@ -651,7 +651,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
               onClick={() => void runRefresh()}
               buttonRef={refreshBtnRef}
             >
-              {refreshing ? 'Обновляем…' : 'Обновить из Кейтаро'}
+              {refreshing ? 'Refreshing…' : 'Refresh from Keitaro'}
             </Button>
             {refreshStatus && (
               <StatusLine error={refreshStatus.error} role="status">
@@ -670,16 +670,16 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       <section className={`card wide ${pending.length > 0 ? sc.hasDraft : ''}`}>
         <PageHeader
           crumbs={[
-            { label: 'Главная', to: '/' },
-            { label: 'Кампании', to: '/campaigns' },
-            { label: 'Потоки' },
+            { label: 'Home', to: '/' },
+            { label: 'Campaigns', to: '/campaigns' },
+            { label: 'Flows' },
           ]}
           title={title}
           meta={
             <p className="counter">
-              ID кампании: {campaignId} ·{' '}
+              Campaign ID: {campaignId} ·{' '}
               <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
-                открыть в Keitaro ↗
+                open in Keitaro ↗
               </a>
             </p>
           }
@@ -723,7 +723,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
                     sendBtnRef.current?.focus();
                   }}
                 >
-                  Отмена
+                  Cancel
                 </Button>
                 <Button
                   variant="danger"
@@ -734,7 +734,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
                     void runApply();
                   }}
                 >
-                  Всё равно отправить
+                  Send anyway
                 </Button>
               </div>
             </div>
@@ -766,10 +766,10 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
           {serverDown && (
             <div role="alert" aria-live="polite" className={s.errorBlock}>
               <Message kind="error">
-                Сервер не отвечает. Проверьте, что uvicorn запущен, и обновите страницу.
+                The server is not responding. Check that uvicorn is running and refresh the page.
               </Message>
               <div className={s.errorActions}>
-                <Button onClick={() => void reload()}>Повторить</Button>
+                <Button onClick={() => void reload()}>Retry</Button>
               </div>
             </div>
           )}

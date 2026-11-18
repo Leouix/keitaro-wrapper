@@ -31,7 +31,7 @@ export function CampaignsPage() {
   const { request } = useAbortableRequest();
 
   useEffect(() => {
-    document.title = 'Кампании — Keitaro';
+    document.title = 'Campaigns — Keitaro';
   }, []);
 
   useEffect(() => {
@@ -58,14 +58,14 @@ export function CampaignsPage() {
       const { status, body } = result;
       if (status !== 200 || !body || !Array.isArray(body.campaigns)) {
         if (status === 409) {
-          setError({ text: 'Сначала укажите API key.', retryable: false, needKey: true });
+          setError({ text: 'Set the API key first.', retryable: false, needKey: true });
         } else if (status === 502) {
-          setError({ text: 'Keitaro недоступен.', retryable: true, needKey: false });
+          setError({ text: 'Keitaro is unavailable.', retryable: true, needKey: false });
         } else if (status === 0) {
-          setError({ text: 'Сеть недоступна.', retryable: true, needKey: false });
+          setError({ text: 'Network unavailable.', retryable: true, needKey: false });
         } else {
           setError({
-            text: detailToText((body as { detail?: unknown } | null)?.detail, `Ошибка загрузки (код ${status}).`),
+            text: detailToText((body as { detail?: unknown } | null)?.detail, `Failed to load (status ${status}).`),
             retryable: true,
             needKey: false,
           });
@@ -101,19 +101,19 @@ export function CampaignsPage() {
       <section className="card">
         <PageHeader
           crumbs={[
-            { label: 'Главная', to: '/' },
-            { label: 'Кампании' },
+            { label: 'Home', to: '/' },
+            { label: 'Campaigns' },
           ]}
-          title="Кампании"
+          title="Campaigns"
           meta={
             <Link to="/campaigns/new" className="link">
-              Создать кампанию
+              Create campaign
             </Link>
           }
         />
         <div className={s.filterRow}>
           <label className={s.label} htmlFor="campaign-query">
-            Поиск по названию кампании
+            Search by campaign name
           </label>
           <input
             id="campaign-query"
@@ -129,15 +129,15 @@ export function CampaignsPage() {
         {phase === 'loading' && (
           <div aria-busy="true">
             <p className="sr-only" role="status">
-              Ищем кампании…
+              Searching campaigns…
             </p>
             <SkeletonRows rows={4} />
           </div>
         )}
 
         {phase === 'idle' && (
-          <EmptyState title="Начните вводить название кампании">
-            Поиск выполняется в Keitaro по подстроке названия.
+          <EmptyState title="Start typing a campaign name">
+            Search runs in Keitaro against a substring of the name.
           </EmptyState>
         )}
 
@@ -149,12 +149,12 @@ export function CampaignsPage() {
             <div className={s.errorActions}>
               {error.needKey && (
                 <Link to="/" className="link">
-                  Указать API key на главной
+                  Set the API key on the home page
                 </Link>
               )}
               {error.retryable && (
                 <Button size="md" onClick={() => setNonce((x) => x + 1)}>
-                  Повторить
+                  Retry
                 </Button>
               )}
             </div>
@@ -162,13 +162,13 @@ export function CampaignsPage() {
         )}
 
         {phase === 'empty' && (
-          <Message kind="info">Ничего не найдено по «{query}».</Message>
+          <Message kind="info">Nothing found for "{query}".</Message>
         )}
 
         {phase === 'ready' && (
           <div>
             <p className="counter" role="status">
-              Найдено: {n} {plural(n, 'кампания', 'кампании', 'кампаний')}
+              Found: {n} {plural(n, 'campaign', 'campaigns')}
             </p>
             <div className={table.wrap}>
               <table className={table.table}>
@@ -177,10 +177,10 @@ export function CampaignsPage() {
                     <th scope="col" className={table.num}>
                       ID
                     </th>
-                    <th scope="col">Кампания</th>
-                    <th scope="col">Группа</th>
-                    <th scope="col">Статус</th>
-                    <th scope="col">Обновлена</th>
+                    <th scope="col">Campaign</th>
+                    <th scope="col">Group</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Updated</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -189,20 +189,20 @@ export function CampaignsPage() {
                       <td className={table.num} data-label="ID">
                         {c.id}
                       </td>
-                      <td className="wrap-anywhere" data-label="Кампания">
+                      <td className="wrap-anywhere" data-label="Campaign">
                         <Link
                           to={`/fb/campaigns/${c.id}/streams`}
                           className={table.rowLink}
                         >
-                          {c.name || `Кампания ${c.id}`}
+                          {c.name || `Campaign ${c.id}`}
                         </Link>
                         {c.alias ? <span className={table.alias}>{c.alias}</span> : null}
                       </td>
-                      <td className="wrap-anywhere" data-label="Группа">
+                      <td className="wrap-anywhere" data-label="Group">
                         {c.group || '—'}
                       </td>
-                      <td data-label="Статус">{c.state || '—'}</td>
-                      <td data-label="Обновлена">{c.updated_at || '—'}</td>
+                      <td data-label="Status">{c.state || '—'}</td>
+                      <td data-label="Updated">{c.updated_at || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

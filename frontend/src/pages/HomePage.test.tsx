@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('HomePage', () => {
-  it('пустое поле и ненастроенный ключ → кнопка disabled', async () => {
+  it('empty field and unconfigured key → button disabled', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>
@@ -34,12 +34,12 @@ describe('HomePage', () => {
       ),
     );
     renderHome();
-    const btn = screen.getByRole('button', { name: 'Далее' }) as HTMLButtonElement;
+    const btn = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   });
 
-  it('ключ настроен → статус-строка и кнопка активна', async () => {
+  it('key configured → status line and button enabled', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>
@@ -47,12 +47,12 @@ describe('HomePage', () => {
       ),
     );
     renderHome();
-    const btn = screen.getByRole('button', { name: 'Далее' }) as HTMLButtonElement;
+    const btn = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement;
     await waitFor(() => expect(btn.disabled).toBe(false));
-    expect(screen.getByText(/Ключ настроен/).textContent).toContain('1234');
+    expect(screen.getByText(/API key configured/).textContent).toContain('1234');
   });
 
-  it('ввод ключа активирует кнопку; 422 показывается текстом, фокус на поле', async () => {
+  it('entering the key enables the button; 422 is shown as text, focus on the field', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -65,21 +65,21 @@ describe('HomePage', () => {
     const { container } = renderHome();
     const input = document.getElementById('api-key') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'short' } });
-    const btn = screen.getByRole('button', { name: 'Далее' }) as HTMLButtonElement;
+    const btn = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
 
     fireEvent.click(btn);
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('Ключ слишком короткий или в неверном формате');
+    expect(alert.textContent).toContain('The key is too short or in an invalid format');
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(document.activeElement).toBe(input);
-    expect(btn.textContent).toBe('Далее');
+    expect(btn.textContent).toBe('Continue');
     // введённое значение не стирается
     expect(input.value).toBe('short');
     void container;
   });
 
-  it('успешный POST и пустое поле при настроенном ключе ведут на /campaigns', async () => {
+  it('successful POST and an empty field with a configured key lead to /campaigns', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -97,7 +97,7 @@ describe('HomePage', () => {
       </MemoryRouter>,
     );
     const btn = await waitFor(() => {
-      const el = screen.getByRole('button', { name: 'Далее' }) as HTMLButtonElement;
+      const el = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement;
       if (el.disabled) throw new Error('not yet enabled');
       return el;
     });
@@ -108,7 +108,7 @@ describe('HomePage', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('ключ настроен: на главной только поле ключа и «Далее» — входов в разделы нет', async () => {
+  it('key configured: only the key field and "Continue" on the home page — no section entries', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>
@@ -117,13 +117,13 @@ describe('HomePage', () => {
     );
     renderHome();
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    expect(screen.getByText(/Ключ настроен/)).toBeTruthy();
-    expect(screen.queryByText('Найти кампанию')).toBeNull();
-    expect(screen.queryByText('Создать кампанию')).toBeNull();
+    expect(screen.getByText(/API key configured/)).toBeTruthy();
+    expect(screen.queryByText('Find campaign')).toBeNull();
+    expect(screen.queryByText('Create campaign')).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('ключ не настроен: входов «Найти кампанию»/«Создать кампанию» нет', async () => {
+  it('key not configured: no "Find campaign"/"Create campaign" entries', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>
@@ -132,11 +132,11 @@ describe('HomePage', () => {
     );
     renderHome();
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('Найти кампанию')).toBeNull();
-    expect(screen.queryByText('Создать кампанию')).toBeNull();
+    expect(screen.queryByText('Find campaign')).toBeNull();
+    expect(screen.queryByText('Create campaign')).toBeNull();
   });
 
-  it('502 → «Keitaro недоступен, попробуйте позже.»', async () => {
+  it('502 → "Keitaro is unavailable — try again later."', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -149,14 +149,14 @@ describe('HomePage', () => {
     fireEvent.change(document.getElementById('api-key') as HTMLInputElement, {
       target: { value: 'key-value' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Keitaro недоступен, попробуйте позже.');
+    expect(alert.textContent).toBe('Keitaro is unavailable — try again later.');
   });
 });
 
-describe('HomePage — глаз в поле ключа', () => {
-  it('кнопка-глаз переключает type password ↔ text, aria-pressed и aria-label меняются; type="button" не сабмитит форму', async () => {
+describe('HomePage — the eye button in the key field', () => {
+  it('the eye button toggles password ↔ text, aria-pressed and aria-label change; type="button" does not submit the form', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>
@@ -168,17 +168,17 @@ describe('HomePage — глаз в поле ключа', () => {
     const input = document.getElementById('api-key') as HTMLInputElement;
     await waitFor(() => expect(input.type).toBe('password'));
 
-    const eye = screen.getByRole('button', { name: 'Показать ключ' }) as HTMLButtonElement;
+    const eye = screen.getByRole('button', { name: 'Show key' }) as HTMLButtonElement;
     expect(eye.type).toBe('button'); // не перехватывает сабмит формы
     expect(eye.getAttribute('aria-pressed')).toBe('false');
 
     fireEvent.click(eye);
     expect(input.type).toBe('text');
-    const shown = screen.getByRole('button', { name: 'Скрыть ключ' }) as HTMLButtonElement;
+    const shown = screen.getByRole('button', { name: 'Hide key' }) as HTMLButtonElement;
     expect(shown.getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(shown);
     expect(input.type).toBe('password');
-    expect(screen.getByRole('button', { name: 'Показать ключ' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Show key' })).toBeTruthy();
   });
 });

@@ -29,8 +29,8 @@ export function Field({
   wrapClassName,
   inputRef,
   passwordToggle = false,
-  revealLabelShow = 'Показать ключ',
-  revealLabelHide = 'Скрыть ключ',
+  revealLabelShow = 'Show key',
+  revealLabelHide = 'Hide key',
   type,
   ...rest
 }: Props) {

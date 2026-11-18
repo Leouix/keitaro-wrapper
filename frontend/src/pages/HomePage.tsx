@@ -69,12 +69,12 @@ export function HomePage() {
     }
 
     const fallback =
-      status === 400 ? 'Ключ отклонён Keitaro, проверьте его значение.' :
-      status === 409 ? 'Ключ не сохранён, попробуйте ещё раз.' :
-      status === 422 ? 'Ключ слишком короткий или в неверном формате.' :
-      status === 502 ? 'Keitaro недоступен, попробуйте позже.' :
-      status === 0 ? 'Сеть недоступна, попробуйте ещё раз.' :
-      detailToText((body as { detail?: unknown } | null)?.detail, `Не удалось сохранить ключ (код ${status}).`);
+      status === 400 ? 'The key was rejected by Keitaro — check its value.' :
+      status === 409 ? 'The key was not saved — try again.' :
+      status === 422 ? 'The key is too short or in an invalid format.' :
+      status === 502 ? 'Keitaro is unavailable — try again later.' :
+      status === 0 ? 'Network unavailable — try again.' :
+      detailToText((body as { detail?: unknown } | null)?.detail, `Failed to save the key (status ${status}).`);
     setError(fallback);
     setBusy(false);
     inputRef.current?.focus();
@@ -83,18 +83,18 @@ export function HomePage() {
   return (
     <div className="page">
       <section className={`card ${s.card}`}>
-        <h1>Keitaro — потоки кампаний</h1>
+        <h1>Keitaro — Campaign flows</h1>
 
         {configured && (
           <StatusLine className={s.status}>
-            Ключ настроен{mask ? `: ${mask}` : ''}
+            API key configured{mask ? `: ${mask}` : ''}
           </StatusLine>
         )}
 
         <form onSubmit={onSubmit} noValidate>
           <Field
             id="api-key"
-            label="Укажите свой API key"
+            label="Enter your API key"
             type="password"
             passwordToggle
             name="api_key"
@@ -113,7 +113,7 @@ export function HomePage() {
             disabled={disabled || busy}
             aria-busy={busy || undefined}
           >
-            {busy ? 'Сохраняем…' : 'Далее'}
+            {busy ? 'Saving…' : 'Continue'}
           </Button>
         </form>
 

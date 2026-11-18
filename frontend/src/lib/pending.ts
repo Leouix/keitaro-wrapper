@@ -99,5 +99,5 @@ export function sortedStreams(
 
 /** Имя потока: name или «Поток {id}». */
 export function streamName(s: Pick<Stream, 'id' | 'name'>): string {
-  return (s && s.name) || `Поток ${s.id}`;
+  return (s && s.name) || `Flow ${s.id}`;
 }

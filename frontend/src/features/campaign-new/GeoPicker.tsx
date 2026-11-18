@@ -55,7 +55,7 @@ export function GeoPicker({ selected, onChange, id, hintId, error, max }: Props)
     if (!codes.length) return;
     const unknown = codes.find((code) => !findCountry(code));
     if (unknown) {
-      setLocalError(`Неизвестный код страны: ${unknown}. Введите ISO-код, например KZ, или название.`);
+      setLocalError(`Unknown country code: ${unknown}. Enter an ISO code, e.g. KZ, or a name.`);
       return;
     }
     const fresh: string[] = [];
@@ -64,7 +64,7 @@ export function GeoPicker({ selected, onChange, id, hintId, error, max }: Props)
     }
     const room = max - selected.length;
     if (fresh.length > room) {
-      setLocalError(`Не больше ${max} стран.`);
+      setLocalError(`No more than ${max} countries.`);
       fresh.length = Math.max(room, 0);
     }
     if (fresh.length) {
@@ -125,7 +125,7 @@ export function GeoPicker({ selected, onChange, id, hintId, error, max }: Props)
   return (
     <div className={s.wrap}>
       {selected.length > 0 && (
-        <ul className={s.chips} aria-label="Выбранные страны">
+        <ul className={s.chips} aria-label="Selected countries">
           {selected.map((code) => (
             <li key={code} className={s.chip}>
               <span className={s.chipCode}>{code}</span>
@@ -133,7 +133,7 @@ export function GeoPicker({ selected, onChange, id, hintId, error, max }: Props)
               <button
                 type="button"
                 className={s.chipRemove}
-                aria-label={`Убрать ${code} — ${countryName(code)}`}
+                aria-label={`Remove ${code} — ${countryName(code)}`}
                 onClick={() => remove(code)}
               >
                 ×
@@ -151,7 +151,7 @@ export function GeoPicker({ selected, onChange, id, hintId, error, max }: Props)
           role="combobox"
           autoComplete="off"
           spellCheck={false}
-          placeholder={full ? `Достигнут максимум: ${max} стран` : 'KZ, UZ или название страны'}
+          placeholder={full ? `Maximum reached: ${max} countries` : 'KZ, UZ or a country name'}
           aria-expanded={open && suggestions.length > 0}
           aria-controls={open && suggestions.length > 0 ? listId : undefined}
           aria-autocomplete="list"
@@ -173,7 +173,7 @@ export function GeoPicker({ selected, onChange, id, hintId, error, max }: Props)
           }}
         />
         {open && suggestions.length > 0 && (
-          <ul id={listId} role="listbox" aria-label="Страны" className={s.list}>
+          <ul id={listId} role="listbox" aria-label="Countries" className={s.list}>
             {suggestions.map((c, i) => (
               <li
                 key={c.code}
@@ -202,7 +202,7 @@ export function GeoPicker({ selected, onChange, id, hintId, error, max }: Props)
         role="status"
         aria-live="polite"
       >
-        {shownError ?? `От 1 до ${max} стран, ввод через запятую.`}
+        {shownError ?? `From 1 to ${max} countries, comma-separated.`}
       </p>
     </div>
   );

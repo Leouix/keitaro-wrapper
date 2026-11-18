@@ -3,8 +3,8 @@ import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { StreamsPage } from './StreamsPage';
 
-describe('StreamsPage — маршрут', () => {
-  it('нечисловой id → внятная ошибка, без запросов', () => {
+describe('StreamsPage — route', () => {
+  it('a non-numeric id → a clear error, no requests', () => {
     render(
       <MemoryRouter initialEntries={['/fb/campaigns/not-a-number/streams']}>
         <Routes>
@@ -13,11 +13,11 @@ describe('StreamsPage — маршрут', () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText('Некорректный адрес: ID кампании должен быть числом.'),
+      screen.getByText('Invalid URL: the campaign ID must be a number.'),
     ).toBeTruthy();
   });
 
-  it('хлебные крошки: Главная → Кампании → Потоки; текущая — не ссылка', () => {
+  it('breadcrumbs: Home → Campaigns → Flows; the current one is not a link', () => {
     render(
       <MemoryRouter initialEntries={['/fb/campaigns/not-a-number/streams']}>
         <Routes>
@@ -25,13 +25,13 @@ describe('StreamsPage — маршрут', () => {
         </Routes>
       </MemoryRouter>,
     );
-    const nav = screen.getByRole('navigation', { name: 'Хлебные крошки' });
-    expect(within(nav).getByRole('link', { name: 'Главная' }).getAttribute('href')).toBe('/');
-    expect(within(nav).getByRole('link', { name: 'Кампании' }).getAttribute('href')).toBe(
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumbs' });
+    expect(within(nav).getByRole('link', { name: 'Home' }).getAttribute('href')).toBe('/');
+    expect(within(nav).getByRole('link', { name: 'Campaigns' }).getAttribute('href')).toBe(
       '/campaigns',
     );
-    const current = within(nav).getByText('Потоки');
+    const current = within(nav).getByText('Flows');
     expect(current.getAttribute('aria-current')).toBe('page');
-    expect(within(nav).queryByRole('link', { name: 'Потоки' })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: 'Flows' })).toBeNull();
   });
 });

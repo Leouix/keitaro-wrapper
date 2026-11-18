@@ -23,9 +23,9 @@ const STORAGE_KEY = 'keitaro.createCampaign.last';
 const MAX_GEOS = 20;
 
 /** Текст валидации «минимум одна страна» — совпадает с GeoPicker-ошибкой. */
-const GEO_REQUIRED = 'Укажите хотя бы одну страну.';
+const GEO_REQUIRED = 'Select at least one country.';
 /** Текст валидации «минимум один оффер» — совпадает с OfferPicker-ошибкой. */
-const OFFER_REQUIRED = 'Укажите хотя бы один оффер.';
+const OFFER_REQUIRED = 'Select at least one offer.';
 /** Максимум офферов в одной кампании — та же защита, что и для стран (план, §10). */
 const MAX_OFFERS = 20;
 
@@ -91,7 +91,7 @@ function SelectField({
         {!options.length && <option value="">{placeholder}</option>}
         {!value && options.length > 0 && (
           <option value="" disabled>
-            Выберите…
+            Select…
           </option>
         )}
         {options.map((o) => (
@@ -130,7 +130,7 @@ export function NewCampaignPage() {
   const busyRef = useRef(false);
 
   useEffect(() => {
-    document.title = 'Создать кампанию — Keitaro';
+    document.title = 'Create campaign — Keitaro';
   }, []);
 
   // Дефолты вычисляются при рендере, без setState-эффекта: селект включается
@@ -202,13 +202,13 @@ export function NewCampaignPage() {
   }
 
   function validate(): string {
-    if (!name.trim()) return 'Укажите название кампании.';
+    if (!name.trim()) return 'Enter the campaign name.';
     if (!geos.length) return GEO_REQUIRED;
     if (!offers.length) return OFFER_REQUIRED;
     if (optionsPhase === 'ready') {
-      if (!domainId) return 'Выберите домен.';
-      if (!groupId) return 'Выберите группу кампаний.';
-      if (!sourceId) return 'Выберите источник трафика.';
+      if (!domainId) return 'Select a domain.';
+      if (!groupId) return 'Select a campaign group.';
+      if (!sourceId) return 'Select a traffic source.';
     }
     return '';
   }
@@ -250,23 +250,23 @@ export function NewCampaignPage() {
       return;
     }
     if (status === 422) {
-      setFormError(detail || 'Проверьте значения полей.');
+      setFormError(detail || 'Check the field values.');
       return;
     }
     if (status === 403) {
-      setFormError(detail || 'Нет прав у ключа.');
+      setFormError(detail || 'The key lacks permissions.');
       return;
     }
     if (status === 502) {
       // detail содержит шаг сбоя, если кампания не собралась целиком.
-      setFormError(detail ? `Keitaro недоступен: ${detail}` : 'Keitaro недоступен.');
+      setFormError(detail ? `Keitaro is unavailable: ${detail}` : 'Keitaro is unavailable.');
       return;
     }
     if (status === 0) {
-      setFormError('Сеть недоступна.');
+      setFormError('Network unavailable.');
       return;
     }
-    setFormError(detail || `Не удалось создать кампанию (код ${status}).`);
+    setFormError(detail || `Failed to create the campaign (status ${status}).`);
   }
 
   function onSubmit(e: FormEvent) {
@@ -283,16 +283,16 @@ export function NewCampaignPage() {
       <section className="card">
         <PageHeader
           crumbs={[
-            { label: 'Главная', to: '/' },
-            { label: 'Кампании', to: '/campaigns' },
-            { label: 'Создание кампании' },
+            { label: 'Home', to: '/' },
+            { label: 'Campaigns', to: '/campaigns' },
+            { label: 'New campaign' },
           ]}
-          title="Создать кампанию" />
+          title="Create campaign" />
 
         {optionsPhase === 'loading' && (
           <div aria-busy="true">
             <p className="sr-only" role="status">
-              Загружаем справочники…
+              Loading dictionaries…
             </p>
             <SkeletonRows rows={4} />
           </div>
@@ -304,11 +304,11 @@ export function NewCampaignPage() {
             <div className={s.errorActions}>
               {needKey && (
                 <Link to="/" className="link">
-                  Указать API key на главной
+                  Set the API key on the home page
                 </Link>
               )}
               <Button size="md" onClick={retry}>
-                Повторить
+                Retry
               </Button>
             </div>
           </div>
@@ -316,10 +316,10 @@ export function NewCampaignPage() {
 
         {success ? (
           <div ref={successRef} tabIndex={-1} role="status" className={s.success}>
-            <Message kind="success">Кампания создана</Message>
+            <Message kind="success">Campaign created</Message>
             <dl className={s.successList}>
               <div className={s.successRow}>
-                <dt>ID кампании</dt>
+                <dt>Campaign ID</dt>
                 <dd>{success.campaign.id}</dd>
               </div>
               <div className={s.successRow}>
@@ -327,7 +327,7 @@ export function NewCampaignPage() {
                 <dd className="tabular">{success.campaign.alias ?? '—'}</dd>
               </div>
               <div className={s.successRow}>
-                <dt>Ссылка</dt>
+                <dt>Link</dt>
                 <dd className="wrap-anywhere">
                   <a href={success.campaign.url ?? (success.campaign.alias ? `https://kylovoa.com/${success.campaign.alias}` : '#')} target="_blank" rel="noreferrer">
                     {success.campaign.url ?? (success.campaign.alias ? `https://kylovoa.com/${success.campaign.alias}` : '—')}
@@ -340,9 +340,9 @@ export function NewCampaignPage() {
                 variant="primary"
                 onClick={() => navigate(`/fb/campaigns/${success.campaign.id}/streams`)}
               >
-                Открыть потоки
+                Open flows
               </Button>
-              <Button onClick={resetSuccess}>Создать ещё</Button>
+              <Button onClick={resetSuccess}>Create another</Button>
             </div>
           </div>
         ) : (
@@ -350,7 +350,7 @@ export function NewCampaignPage() {
             <form onSubmit={onSubmit} noValidate>
               <Field
                 id="campaign-name"
-                label="Название кампании"
+                label="Campaign name"
                 name="campaign_name"
                 autoComplete="off"
                 spellCheck={false}
@@ -361,7 +361,7 @@ export function NewCampaignPage() {
 
               <div className={s.geoField}>
                 <label className={fm.label} htmlFor="geo-input">
-                  Гео — страны трафика
+                  Geo — traffic countries
                 </label>
                 <GeoPicker
                   id="geo-input"
@@ -375,7 +375,7 @@ export function NewCampaignPage() {
 
               <div className={s.offerField}>
                 <label className={fm.label} htmlFor="offer-input">
-                  Офферы — ID через запятую
+                  Offers — comma-separated IDs
                 </label>
                 <OfferPicker
                   id="offer-input"
@@ -389,30 +389,30 @@ export function NewCampaignPage() {
 
               <SelectField
                 id="campaign-domain"
-                label="Домен"
+                label="Domain"
                 value={domainId}
                 onChange={setDomainChoice}
                 options={options?.domains ?? []}
                 disabled={!ready}
-                placeholder="Не загружено"
+                placeholder="Not loaded"
               />
               <SelectField
                 id="campaign-group"
-                label="Группа кампаний"
+                label="Campaign group"
                 value={groupId}
                 onChange={setGroupChoice}
                 options={options?.groups ?? []}
                 disabled={!ready}
-                placeholder="Не загружено"
+                placeholder="Not loaded"
               />
               <SelectField
                 id="campaign-source"
-                label="Источник трафика"
+                label="Traffic source"
                 value={sourceId}
                 onChange={setSourceChoice}
                 options={options?.sources ?? []}
                 disabled={!ready}
-                placeholder="Не загружено"
+                placeholder="Not loaded"
               />
 
               {formError && (
@@ -423,11 +423,11 @@ export function NewCampaignPage() {
 
               {duplicate && (
                 <div ref={duplicateRef} role="alert" tabIndex={-1} className={s.duplicate}>
-                  <Message kind="warn">Кампания с таким названием уже есть, создать ещё одну?</Message>
+                  <Message kind="warn">A campaign with this name already exists — create another one?</Message>
                   <div className={s.errorActions}>
                     {duplicate.id != null && (
                       <Link to={`/fb/campaigns/${duplicate.id}/streams`} className="link">
-                        Открыть существующую (ID {duplicate.id})
+                        Open existing (ID {duplicate.id})
                       </Link>
                     )}
                     <Button
@@ -436,7 +436,7 @@ export function NewCampaignPage() {
                       aria-busy={busy || undefined}
                       onClick={() => void submit(true)}
                     >
-                      Всё равно создать
+                      Create anyway
                     </Button>
                     <Button
                       disabled={busy}
@@ -445,7 +445,7 @@ export function NewCampaignPage() {
                         nameRef.current?.focus();
                       }}
                     >
-                      Отменить
+                      Cancel
                     </Button>
                   </div>
                 </div>
@@ -457,7 +457,7 @@ export function NewCampaignPage() {
                 disabled={busy}
                 aria-busy={busy || undefined}
               >
-                {busy ? 'Создаём…' : 'Создать кампанию'}
+                {busy ? 'Creating…' : 'Create campaign'}
               </Button>
             </form>
           )

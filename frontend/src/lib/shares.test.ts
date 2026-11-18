@@ -19,17 +19,17 @@ const offers = (ids: number[]): Map<number, Offer | null> =>
   new Map(ids.map((id) => [id, { id, name: `Offer ${id}`, state: 'active', payout_value: 5, payout_currency: 'USD' }]));
 
 describe('addedShares', () => {
-  it('при живых весах новый офер получает средний вес: 4×25 -> 25', () => {
+  it('with live weights a new offer gets the mean weight: 4×25 -> 25', () => {
     expect(addedShares([25, 25, 25, 25], 1)).toEqual([25]);
     expect(addedShares([40, 30, 20, 10], 1)).toEqual([25]);
   });
 
-  it('пустой поток: 100 делится с доборкой остатка первым строкам (3 -> 34/33/33)', () => {
+  it('empty flow: 100 is split with the remainder topping up the first rows (3 -> 34/33/33)', () => {
     expect(addedShares([], 3)).toEqual([34, 33, 33]);
     expect(addedShares([], 4)).toEqual([25, 25, 25, 25]);
   });
 
-  it('count <= 0 → пусто', () => {
+  it('count <= 0 → empty', () => {
     expect(addedShares([25], 0)).toEqual([]);
     expect(addedShares([], -1)).toEqual([]);
   });
@@ -40,8 +40,8 @@ describe('addedShares', () => {
  * живые − remove + add. Деление остатка (100 − Σ пинов) между незапаянными,
  * остаток — первому по порядку; пин на единственном офере сбрасывается на 100.
  */
-describe('computeStreamRows — с пинами', () => {
-  it('нет пинов — как раньше: добавляемый получает средний вес живых', () => {
+describe('computeStreamRows — with pins', () => {
+  it('no pins — as before: the added offer gets the mean of the live weights', () => {
     const rows = computeStreamRows(
       stream([
         [10, 60],
@@ -55,12 +55,12 @@ describe('computeStreamRows — с пинами', () => {
     expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned])).toEqual([
       [10, 60, false],
       [11, 40, false],
-      [20, 50, false], // средний вес живых
+      [20, 50, false], // mean of the live weights
     ]);
   });
 
-  it('один пин: незапаянные делят остаток поровну, остаток первому', () => {
-    // финальный состав: 10 (пин 60), 11, 20 (add). Остаток 40 → 11 и 20 по 20.
+  it('one pin: the unpinned split the remainder equally, the remainder goes to the first', () => {
+    // final set: 10 (pin 60), 11, 20 (add). The remainder 40 → 11 and 20 get 20 each.
     const rows = computeStreamRows(
       stream([
         [10, 60],
@@ -72,14 +72,14 @@ describe('computeStreamRows — с пинами', () => {
       [{ stream_id: 1, offer_id: 10, share: 60 }],
     );
     expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned])).toEqual([
-      [10, 60, true], // живая строка — вес из Keitaro, пин виден
-      [11, 40, false], // живая строка — вес из Keitaro
-      [20, 20, false], // добавляемому достаётся 40 / 2
+      [10, 60, true], // live row — the Keitaro weight, the pin is visible
+      [11, 40, false], // live row — the Keitaro weight
+      [20, 20, false], // the added one gets 40 / 2
     ]);
   });
 
-  it('два пина: остаток делится между незапаянными', () => {
-    // пины 50 + 30 = 80, остаток 20 → оферы 12 и 20 (add) по 10.
+  it('two pins: the remainder is split between the unpinned', () => {
+    // pins 50 + 30 = 80, the remainder 20 → offers 12 and 20 (add) get 10 each.
     const rows = computeStreamRows(
       stream([
         [10, 50],
@@ -98,13 +98,13 @@ describe('computeStreamRows — с пинами', () => {
       [10, 50, true],
       [11, 30, true],
       [12, 20, false], // живая строка — вес из Keitaro
-      [20, 10, false], // добавляемому достаётся 20 / 2
+      [20, 10, false], // the added one gets 20 / 2
     ]);
   });
 
-  it('пин на добавляемом офере: показывается зафиксированный вес', () => {
-    // add 20 запаян на 33; незапаянных в финальном составе нет (10,11,12 живые,
-    // их веса из Keitaro 34/33/33 не пересчитываются) → делить нечего.
+  it('a pin on the added offer: the pinned weight is shown', () => {
+    // add 20 is pinned at 33; no unpinned offers in the final set (10,11,12 are live,
+    // their Keitaro weights 34/33/33 are not recalculated) → nothing to split.
     const rows = computeStreamRows(
       stream([
         [10, 34],
@@ -124,9 +124,9 @@ describe('computeStreamRows — с пинами', () => {
     ]);
   });
 
-  it('remove запаянного офера: его вес освобождается и делится заново', () => {
-    // живые 10/11/12 (34/33/33), пин на 10, remove 10, add 20:
-    // финальный состав 11, 12, 20 без пинов → 100 делится 33/33/34.
+  it('removing a pinned offer: its weight is released and split again', () => {
+    // live 10/11/12 (34/33/33), a pin on 10, remove 10, add 20:
+    // the final set is 11, 12, 20 without pins → 100 is split 33/33/34.
     const rows = computeStreamRows(
       stream([
         [10, 34],
@@ -142,15 +142,15 @@ describe('computeStreamRows — с пинами', () => {
       [{ stream_id: 1, offer_id: 10, share: 34 }],
     );
     expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned, r.pendingAction])).toEqual([
-      [10, null, false, 'remove'], // строка остаётся с прочерком
+      [10, null, false, 'remove'], // the row stays with a dash
       [11, 33, false, null], // живые показывают веса Keitaro
       [12, 33, false, null],
-      [20, 33, false, 'add'], // остаток 100 / 3: первому (живому 11) 34, добавляемому 33
+      [20, 33, false, 'add'], // remainder 100 / 3: the first (live 11) gets 34, the added one 33
     ]);
   });
 
-  it('остался один офер: вес сбрасывается на 100, даже если был запаян', () => {
-    // пустой живой список, add 20 запаян на 40 — он единственный в финальном составе.
+  it('one offer left: the weight resets to 100 even if it was pinned', () => {
+    // empty live list, add 20 pinned at 40 — it is the only one in the final set.
     const rows = computeStreamRows(
       stream([]),
       pending([[20, 'add']]),
@@ -162,8 +162,8 @@ describe('computeStreamRows — с пинами', () => {
     expect(rows[0]).toMatchObject({ entry: { offer_id: 20 }, share: 100, pinned: true });
   });
 
-  it('100 на троих с одним пином: пин держит свой вес, остальные поровну', () => {
-    // пустой поток, три добавления: 20 запаян на 40 → 21 и 22 получают по 30.
+  it('100 for three with one pin: the pin keeps its weight, the rest split equally', () => {
+    // empty flow, three additions: 20 pinned at 40 → 21 and 22 get 30 each.
     const rows = computeStreamRows(
       stream([]),
       pending([
@@ -183,8 +183,8 @@ describe('computeStreamRows — с пинами', () => {
   });
 });
 
-describe('computeStreamRows — без pending', () => {
-  it('живые строки со своими долями, архив после живых', () => {
+describe('computeStreamRows — without pending', () => {
+  it('live rows with their own shares, the archive after the live ones', () => {
     const rows = computeStreamRows(
       stream([
         [10, 60],
@@ -201,16 +201,16 @@ describe('computeStreamRows — без pending', () => {
     ]);
   });
 
-  it('доля null у живой строки рисуется прочерком', () => {
+  it('a null share of a live row is rendered as a dash', () => {
     const rows = computeStreamRows(stream([[10, null]]), [], [], offers([10]));
     expect(rows[0].share).toBeNull();
   });
 });
 
-describe('computeStreamRows — с pending', () => {
-  it('remove: доля прочерк, живые показывают свои веса из Keitaro', () => {
-    // live: 10, 11, 12 (34/33/33), remove 10 → строка 10 на месте с «—»,
-    // остальные держат веса Keitaro и не пересчитываются локально.
+describe('computeStreamRows — with pending', () => {
+  it('remove: a dash share, the live rows keep their Keitaro weights', () => {
+    // live: 10, 11, 12 (34/33/33), remove 10 → row 10 stays with a "—",
+    // the others keep their Keitaro weights and are not recalculated locally.
     const rows = computeStreamRows(
       stream([
         [10, 34],
@@ -228,9 +228,9 @@ describe('computeStreamRows — с pending', () => {
     ]);
   });
 
-  it('remove + add: живые держат веса Keitaro, новый получает средний вес', () => {
-    // live: 10, 11, 12; remove 10, add 20 → живые 11 (33) и 12 (33) не меняются,
-    // новый 20 получает средний вес живых — 33.
+  it('remove + add: the live rows keep their Keitaro weights, the new one gets the mean weight', () => {
+    // live: 10, 11, 12; remove 10, add 20 → the live 11 (33) and 12 (33) are unchanged,
+    // the new 20 gets the mean of the live weights — 33.
     const rows = computeStreamRows(
       stream([
         [10, 34],
@@ -252,7 +252,7 @@ describe('computeStreamRows — с pending', () => {
     ]);
   });
 
-  it('добавление архивного офера: строка одна, бейдж «вернётся в поток», архив не дублируется', () => {
+  it('adding an archived offer: a single row, the "will return" badge, the archive is not duplicated', () => {
     const archive: ArchivedEntry[] = [
       { stream_id: 1, offer_id: 20, state: 'active', reason: 'user' },
     ];
@@ -267,13 +267,13 @@ describe('computeStreamRows — с pending', () => {
     });
   });
 
-  it('pending на пустом потоке: только добавления, доли пересчитаны', () => {
+  it('pending on an empty flow: additions only, the shares are recalculated', () => {
     const rows = computeStreamRows(stream([]), pending([[7, 'add']]), [], offers([7]));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ share: 100, pendingAction: 'add' });
   });
 
-  it('без pending доли НЕ пересчитываются даже если похожи на неровные', () => {
+  it('without pending the shares are NOT recalculated even if they look uneven', () => {
     const rows = computeStreamRows(
       stream([
         [10, 34],
@@ -287,7 +287,7 @@ describe('computeStreamRows — с pending', () => {
     expect(rows.map((r) => r.share)).toEqual([34, 33, 33]);
   });
 
-  it('архивная строка рисует state из архива и reason', () => {
+  it('an archived row renders the state from the archive and the reason', () => {
     const rows = computeStreamRows(
       stream([]),
       [],
@@ -302,8 +302,8 @@ describe('computeStreamRows — с pending', () => {
     });
   });
 
-  // Кейс кампании 212502: архив Flow 2 сверху вниз, Bring Back последней строки.
-  it('212502: Bring Back архивной строки не меняет порядок, у строки бейдж add и доля', () => {
+  // Campaign 212502 case: the archive of Flow 2 top-down, Bring Back on the last row.
+  it('212502: Bring Back of an archived row does not change the order, the row gets the add badge and a share', () => {
     const archive: ArchivedEntry[] = [4517, 25327, 4516, 24800, 23142, 4514, 4440].map(
       (offer_id) => ({ stream_id: 1, offer_id, state: 'active', reason: 'user' }),
     );
@@ -318,7 +318,7 @@ describe('computeStreamRows — с pending', () => {
     expect(rows.slice(0, 6).every((r) => r.isArchived && r.pendingAction === null && r.share === null)).toBe(true);
   });
 
-  it('212502: отмена — строка остаётся на месте, снова архивная без доли', () => {
+  it('212502: cancel — the row stays in place, archived again without a share', () => {
     const archive: ArchivedEntry[] = [4517, 25327, 4516, 24800, 23142, 4514, 4440].map(
       (offer_id) => ({ stream_id: 1, offer_id, state: 'active', reason: 'user' }),
     );
@@ -332,7 +332,7 @@ describe('computeStreamRows — с pending', () => {
     });
   });
 
-  it('возвращаемый из архива офер рисуется на архивной позиции, не сразу после живых', () => {
+  it('an offer returned from the archive is rendered at its archived position, not right after the live ones', () => {
     const archive: ArchivedEntry[] = [
       { stream_id: 1, offer_id: 20, state: 'active', reason: 'user' },
       { stream_id: 1, offer_id: 30, state: 'active', reason: 'user' },

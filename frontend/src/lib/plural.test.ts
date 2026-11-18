@@ -2,30 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { plural } from './plural';
 
 describe('plural', () => {
-  it('один → one', () => {
-    expect(plural(1, 'кампания', 'кампании', 'кампаний')).toBe('кампания');
-    expect(plural(21, 'кампания', 'кампании', 'кампаний')).toBe('кампания');
-    expect(plural(101, 'кампания', 'кампании', 'кампаний')).toBe('кампания');
+  it('1 → one', () => {
+    expect(plural(1, 'campaign', 'campaigns')).toBe('campaign');
   });
 
-  it('2–4 (не 12–14) → few', () => {
-    expect(plural(2, 'кампания', 'кампании', 'кампаний')).toBe('кампании');
-    expect(plural(4, 'кампания', 'кампании', 'кампаний')).toBe('кампании');
-    expect(plural(22, 'кампания', 'кампании', 'кампаний')).toBe('кампании');
+  it('0, 2–20, 21, 101 → many', () => {
+    expect(plural(0, 'campaign', 'campaigns')).toBe('campaigns');
+    expect(plural(2, 'campaign', 'campaigns')).toBe('campaigns');
+    expect(plural(5, 'campaign', 'campaigns')).toBe('campaigns');
+    expect(plural(11, 'campaign', 'campaigns')).toBe('campaigns');
+    expect(plural(21, 'campaign', 'campaigns')).toBe('campaigns');
+    expect(plural(101, 'campaign', 'campaigns')).toBe('campaigns');
   });
 
-  it('5–20, 11–14, 0 → many', () => {
-    expect(plural(0, 'кампания', 'кампании', 'кампаний')).toBe('кампаний');
-    expect(plural(5, 'кампания', 'кампании', 'кампаний')).toBe('кампаний');
-    expect(plural(11, 'кампания', 'кампании', 'кампаний')).toBe('кампаний');
-    expect(plural(14, 'кампания', 'кампании', 'кампаний')).toBe('кампаний');
-    expect(plural(12, 'кампания', 'кампании', 'кампаний')).toBe('кампаний');
-    expect(plural(25, 'кампания', 'кампании', 'кампаний')).toBe('кампаний');
+  it('offer forms do not break', () => {
+    expect(plural(1, 'offer', 'offers')).toBe('offer');
+    expect(plural(3, 'offer', 'offers')).toBe('offers');
   });
 
-  it('офер/оффер-формы не ломаются', () => {
-    expect(plural(1, 'офер', 'офера', 'оферов')).toBe('офер');
-    expect(plural(3, 'офер', 'офера', 'оферов')).toBe('офера');
-    expect(plural(7, 'офер', 'офера', 'оферов')).toBe('оферов');
+  it('negative and fractional numbers → many', () => {
+    expect(plural(-1, 'campaign', 'campaigns')).toBe('campaigns');
+    expect(plural(1.5, 'campaign', 'campaigns')).toBe('campaigns');
   });
 });

@@ -99,16 +99,16 @@ export function StreamCard({
           <table className={table.table}>
             <thead>
               <tr>
-                <th scope="col">Офер</th>
+                <th scope="col">Offer</th>
                 <th scope="col" className={table.num}>
-                  Доля
+                  Share
                 </th>
-                <th scope="col">Статус</th>
-                <th scope="col">Поток</th>
+                <th scope="col">Status</th>
+                <th scope="col">Flow</th>
                 <th scope="col" className={table.num}>
-                  Выплата
+                  Payout
                 </th>
-                <th scope="col">Действие</th>
+                <th scope="col">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -132,7 +132,7 @@ export function StreamCard({
           </table>
         </div>
       ) : (
-        <p className={s.noOffers}>Без оферов</p>
+        <p className={s.noOffers}>No offers</p>
       )}
 
       {/* Ошибка последней операции по этому потоку — под таблицей, статусом. */}
@@ -152,7 +152,7 @@ export function StreamCard({
           onAdd={onAdd}
         />
       ) : (
-        <p className={s.noOffers}>Поток не принимает оферы (schema={stream.schema || '—'})</p>
+        <p className={s.noOffers}>The flow does not accept offers (schema={stream.schema || '—'})</p>
       )}
     </section>
   );
@@ -197,15 +197,15 @@ function OfferRow({
   // Пин недоступен: архивная строка, к удалению, доля не определена.
   const canPin = !isArchived && pendingAction !== 'remove' && share != null;
   const pinLabel = pinned
-    ? `Снять фиксацию веса офера #${offerId} в потоке ${name}`
-    : `Зафиксировать вес офера #${offerId} в потоке ${name}`;
+    ? `Unpin the weight of offer #${offerId} in flow ${name}`
+    : `Pin the weight of offer #${offerId} in flow ${name}`;
 
   return (
     <tr className={isArchived ? table.archivedRow : pendingAction ? table.pendingRow : ''}>
-      <td className={`${table.offerCell} wrap-anywhere`} data-label="Офер">
+      <td className={`${table.offerCell} wrap-anywhere`} data-label="Offer">
         <span className={table.offerId}>#{offerId}</span>{' '}
         {isArchived && (
-          <Badge kind="archived">{reason === 'keitaro' ? 'удалён в Keitaro' : 'в архиве'}</Badge>
+          <Badge kind="archived">{reason === 'keitaro' ? 'deleted in Keitaro' : 'archived'}</Badge>
         )}
         {/* Сервер недоступен целиком — текст ошибки живёт в общем блоке
             сверху, здесь только прочерк; 403 — честное «нет прав» (id и доля
@@ -216,19 +216,19 @@ function OfferRow({
           <>{offer.name || ''}</>
         ) : !isArchived ? (
           serverDown ? (
-            <span aria-label={`Офер #${offerId}: данные недоступны`}>—</span>
+            <span aria-label={`Offer #${offerId}: data unavailable`}>—</span>
           ) : errStatus === 403 ? (
             <em>{offerNameForbiddenText}</em>
           ) : (
-            <em>не удалось загрузить офер</em>
+            <em>failed to load the offer</em>
           )
         ) : null}
-        {pendingAction === 'remove' && <Badge kind="pending">к удалению</Badge>}
+        {pendingAction === 'remove' && <Badge kind="pending">to remove</Badge>}
         {pendingAction === 'add' && (
           <Badge kind="pending">{pendingAddBadgeText(streamId, offerId, archive)}</Badge>
         )}
       </td>
-      <td className={`${table.num} ${s.shareCell}`} data-label="Доля">
+      <td className={`${table.num} ${s.shareCell}`} data-label="Share">
         {share == null ? '—' : `${share}%`}
         {canPin && (
           <button
@@ -236,7 +236,7 @@ function OfferRow({
             className={s.pinBtn}
             aria-pressed={pinned}
             aria-label={pinLabel}
-            title={pinned ? `Вес зафиксирован (${share}%): не меняется при добавлении оферов` : `Зафиксировать вес ${share}%`}
+            title={pinned ? `Weight pinned (${share}%): does not change when offers are added` : `Pin weight ${share}%`}
             disabled={disabled}
             data-pin-stream-id={streamId}
             data-pin-offer-id={offerId}
@@ -246,30 +246,30 @@ function OfferRow({
           </button>
         )}
       </td>
-      <td data-label="Статус">
+      <td data-label="Status">
         {isArchived
           ? entry.state || offer?.state || '—'
           : offer?.state || entry.state || '—'}
       </td>
       {/* Имя потока не переносится: «Flow 1» должно оставаться одной строкой. */}
-      <td className="nowrap" data-label="Поток">
+      <td className="nowrap" data-label="Flow">
         {stream ? name : '—'}
       </td>
-      <td className={table.num} data-label="Выплата">
+      <td className={table.num} data-label="Payout">
         {payoutText}
       </td>
-      <td className="nowrap" data-label="Действие">
+      <td className="nowrap" data-label="Action">
         {pendingAction ? (
           <Button
             size="sm"
             variant="secondary"
             data-stream-id={streamId}
             data-offer-id={offerId}
-            aria-label={`Отменить отложенное изменение офера #${offerId} в потоке ${name}`}
+            aria-label={`Cancel the pending change of offer #${offerId} in flow ${name}`}
             disabled={disabled}
             onClick={() => onCancel(stream, offerId)}
           >
-            Отменить
+            Cancel
           </Button>
         ) : isArchived ? (
           <Button
@@ -277,7 +277,7 @@ function OfferRow({
             variant="secondary"
             data-stream-id={streamId}
             data-offer-id={offerId}
-            aria-label={`Вернуть офер #${offerId} в поток ${name}`}
+            aria-label={`Return offer #${offerId} to flow ${name}`}
             disabled={disabled}
             onClick={() => onBringBack(stream, offerId)}
           >
@@ -289,11 +289,11 @@ function OfferRow({
             variant="ghost"
             data-stream-id={streamId}
             data-offer-id={offerId}
-            aria-label={`Удалить офер #${offerId} из потока ${name}`}
+            aria-label={`Delete offer #${offerId} from flow ${name}`}
             disabled={disabled}
             onClick={() => onDelete(stream, offerId)}
           >
-            Удалить
+            Delete
           </Button>
         )}
       </td>
@@ -359,7 +359,7 @@ function OfferForm({
       resetSearch();
       return;
     }
-    setHint({ text: 'Ищем оффер…', kind: '' });
+    setHint({ text: 'Looking up the offer…', kind: '' });
     timerRef.current = setTimeout(() => void searchOffer(digits), SEARCH_DEBOUNCE_MS);
   }
 
@@ -419,17 +419,17 @@ function OfferForm({
       if (body.state) text += ` · ${body.state}`;
       setHint({ text, kind: 'found' });
     } else if (status === 404) {
-      failSearch(idStr, `Офер с ID ${parseInt(idStr, 10)} не найден`);
+      failSearch(idStr, `Offer with ID ${parseInt(idStr, 10)} not found`);
     } else if (status === 409) {
-      failSearch(idStr, 'Сначала укажите API key на главной.');
+      failSearch(idStr, 'Set the API key on the home page first.');
     } else if (status === 502) {
-      failSearch(idStr, 'Keitaro недоступен, попробуйте позже.');
+      failSearch(idStr, 'Keitaro is unavailable — try again later.');
     } else if (status === 0) {
-      failSearch(idStr, 'Сеть недоступна, попробуйте ещё раз.');
+      failSearch(idStr, 'Network unavailable — try again.');
     } else {
       failSearch(
         idStr,
-        detailToText((body as { detail?: unknown } | null)?.detail, `Не удалось найти офер (код ${status}).`),
+        detailToText((body as { detail?: unknown } | null)?.detail, `Failed to find the offer (status ${status}).`),
       );
     }
   }
@@ -438,12 +438,12 @@ function OfferForm({
   const addDisabled = sending || busy || !found || duplicate;
   const addTitle =
     sending || busy
-      ? 'Идёт запрос…'
+      ? 'Request in progress…'
       : !found
-        ? 'Сначала найдите офер по ID'
+        ? 'Find the offer by ID first'
         : duplicate
-          ? 'Этот офер уже есть в этом потоке или уже помечен как изменение'
-          : 'Помечается как отложенное добавление — уйдёт в Keitaro по «Отправить в Кейтаро»';
+          ? 'This offer is already in this flow or already marked as a change'
+          : 'Marked as a pending addition — goes to Keitaro on "Send to Keitaro"';
 
   /**
    * «Добавить»: офер помечается как отложенное добавление (pending add)
@@ -467,11 +467,11 @@ function OfferForm({
       <div className={s.row}>
         <Field
           id={`offer-id-${streamId}`}
-          label={`Добавить офер в ${name}`}
+          label={`Add an offer to ${name}`}
           type="search"
           inputMode="numeric"
           autoComplete="off"
-          placeholder="Введите ID оффера"
+          placeholder="Enter the offer ID"
           hintId={`offer-hint-${streamId}`}
           hint={hint.text}
           hintKind={hint.kind}
@@ -490,7 +490,7 @@ function OfferForm({
             // см. .addActive в StreamCard.module.css; неактивная остаётся серой.
             className={addDisabled ? undefined : s.addActive}
           >
-            Добавить
+            Add
           </Button>
         </div>
       </div>

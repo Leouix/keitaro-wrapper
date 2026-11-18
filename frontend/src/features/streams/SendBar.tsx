@@ -30,11 +30,11 @@ export function SendBar({
   // список — пока идёт один, второй недоступен.
   const disabled = sending || refreshing || pendingCount === 0;
   const title = sending
-    ? 'Идёт отправка…'
+    ? 'Sending…'
     : refreshing
-      ? 'Идёт обновление…'
+      ? 'Refreshing…'
       : pendingCount === 0
-        ? 'Нет отложенных изменений'
+        ? 'No pending changes'
         : '';
   return (
     <div className={s.sectionTop}>
@@ -42,11 +42,11 @@ export function SendBar({
         variant="secondary"
         className={s.refresh}
         disabled={sending || refreshing}
-        title={refreshing ? 'Идёт обновление…' : ''}
+        title={refreshing ? 'Refreshing…' : ''}
         onClick={onRefresh}
         buttonRef={refreshButtonRef}
       >
-        {refreshing ? 'Обновляем…' : 'Обновить из Кейтаро'} <span className={s.fetchKeitaro}></span>
+        {refreshing ? 'Refreshing…' : 'Refresh from Keitaro'} <span className={s.fetchKeitaro}></span>
       </Button>
       <div className={s.bar}>
         <Button
@@ -56,12 +56,12 @@ export function SendBar({
         onClick={onSend}
         buttonRef={buttonRef}
       >
-        Отправить в Кейтаро
+        Send to Keitaro
       </Button>
       <span className={s.count}>
         {!pendingCount
-          ? 'Изменений нет'
-          : `Изменений: ${[adds ? `+${adds}` : '', removes ? `−${removes}` : ''].filter(Boolean).join(' / ')}`}
+          ? 'No changes'
+          : `Changes: ${[adds ? `+${adds}` : '', removes ? `−${removes}` : ''].filter(Boolean).join(' / ')}`}
       </span>
       </div>
      

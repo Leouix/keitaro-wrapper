@@ -13,7 +13,7 @@ const OPTIONS = {
   domains: [{ id: 1813, name: 'kylovoa.com', state: 'active' }],
   groups: [
     { id: 10332, name: 'FORTESTS' },
-    { id: 99, name: 'Другая' },
+    { id: 99, name: 'Other' },
   ],
   sources: [{ id: 836, name: 'FORTESTS' }],
 };
@@ -59,7 +59,7 @@ function renderPage(fetchMock = defaultFetch()) {
 const nameInput = () => document.getElementById('campaign-name') as HTMLInputElement;
 const geoInput = () => document.getElementById('geo-input') as HTMLInputElement;
 const offerInput = () => document.getElementById('offer-input') as HTMLInputElement;
-const offerChips = () => document.querySelector('[aria-label="Выбранные офферы"]') as HTMLElement | null;
+const offerChips = () => document.querySelector('[aria-label="Selected offers"]') as HTMLElement | null;
 const offerHint = () => document.getElementById('offer-hint') as HTMLElement;
 const offerWarns = () => document.querySelector('p[class*="warnLine"]') as HTMLElement | null;
 const offerCalls = (mock: ReturnType<typeof vi.fn>, id: number) =>
@@ -67,7 +67,7 @@ const offerCalls = (mock: ReturnType<typeof vi.fn>, id: number) =>
 const domainSelect = () => document.getElementById('campaign-domain') as HTMLSelectElement;
 const groupSelect = () => document.getElementById('campaign-group') as HTMLSelectElement;
 const sourceSelect = () => document.getElementById('campaign-source') as HTMLSelectElement;
-const submitBtn = () => screen.getByRole('button', { name: /Созда/ }) as HTMLButtonElement;
+const submitBtn = () => screen.getByRole('button', { name: /Crea/ }) as HTMLButtonElement;
 
 /** Node в vitest без --localstorage-file не даёт localStorage: in-memory мок. */
 let store: Map<string, string>;
@@ -100,10 +100,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('NewCampaignPage — справочники', () => {
-  it('загрузка: скелетон, затем форма; единственные домен и источник подставлены, группа FORTESTS', async () => {
+describe('NewCampaignPage — dictionaries', () => {
+  it('loading: skeleton, then the form; the only domain and source are preselected, FORTESTS group', async () => {
     const fetchMock = renderPage();
-    await screen.findByText('Создать кампанию');
+    await screen.findByText('Create campaign');
     await waitFor(
       () => {
         expect(domainSelect().value).toBe('1813');
@@ -121,7 +121,7 @@ describe('NewCampaignPage — справочники', () => {
     });
   });
 
-  it('ошибка справочников: «Повторить», форма не заблокирована, поля ввода работают', async () => {
+  it('dictionary error: "Retry", the form is not blocked, inputs work', async () => {
     let fail = true;
     renderPage(
       vi.fn(async (url: string) => {
@@ -132,8 +132,8 @@ describe('NewCampaignPage — справочники', () => {
       }),
     );
     const alert = await screen.findByRole('alert', {}, { timeout: 3000 });
-    expect(alert.textContent).toContain('Keitaro недоступен.');
-    expect(screen.getByText('Повторить')).toBeTruthy();
+    expect(alert.textContent).toContain('Keitaro is unavailable.');
+    expect(screen.getByText('Retry')).toBeTruthy();
     // форма не заблокирована: имя можно вводить
     fireEvent.change(nameInput(), { target: { value: 'x' } });
     expect(nameInput().value).toBe('x');
@@ -141,7 +141,7 @@ describe('NewCampaignPage — справочники', () => {
     expect(domainSelect().disabled).toBe(true);
 
     fail = false;
-    fireEvent.click(screen.getByText('Повторить'));
+    fireEvent.click(screen.getByText('Retry'));
     // значение и активность проверяются в одном waitFor: не зависим от момента опроса
     await waitFor(
       () => {
@@ -152,7 +152,7 @@ describe('NewCampaignPage — справочники', () => {
     );
   });
 
-  it('последний выбор восстанавливается из localStorage', async () => {
+  it('the last choice is restored from localStorage', async () => {
     store.set(
       'keitaro.createCampaign.last',
       JSON.stringify({ domainId: 1813, groupId: 99, sourceId: 836 }),
@@ -169,8 +169,8 @@ describe('NewCampaignPage — справочники', () => {
   });
 });
 
-describe('NewCampaignPage — валидация', () => {
-  it('пустая форма: ошибка про название, POST не уходит', async () => {
+describe('NewCampaignPage — validation', () => {
+  it('empty form: name error, no POST', async () => {
     renderPage();
     await fillValidForm();
     fireEvent.change(nameInput(), { target: { value: '' } });
@@ -178,76 +178,76 @@ describe('NewCampaignPage — валидация', () => {
     fireEvent.change(offerInput(), { target: { value: '' } });
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Укажите название кампании.');
+    expect(alert.textContent).toBe('Enter the campaign name.');
     expect(postCalls).toHaveLength(0);
   });
 
-  it('гео пустое: «Укажите хотя бы одну страну.», POST не уходит', async () => {
+  it('empty geo: "Select at least one country.", no POST', async () => {
     renderPage();
     await fillValidForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Убрать KZ — Казахстан' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove KZ — Kazakhstan' }));
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Укажите хотя бы одну страну.');
+    expect(alert.textContent).toBe('Select at least one country.');
     expect(postCalls).toHaveLength(0);
   });
 
-  it('невалидное гео: неизвестный код не добавляется, POST не уходит', async () => {
+  it('invalid geo: an unknown code is not added, no POST', async () => {
     renderPage();
     await fillValidForm();
-    // убираем KZ, чтобы гео осталось пустым
-    fireEvent.click(screen.getByRole('button', { name: 'Убрать KZ — Казахстан' }));
+    // remove KZ so that geo stays empty
+    fireEvent.click(screen.getByRole('button', { name: 'Remove KZ — Kazakhstan' }));
 
     fireEvent.change(geoInput(), { target: { value: 'XX' } });
     fireEvent.keyDown(geoInput(), { key: 'Enter' });
     // XX не добавился
-    expect(screen.queryByLabelText('Выбранные страны')).toBeNull();
+    expect(screen.queryByLabelText('Selected countries')).toBeNull();
     const hint = document.getElementById('geo-hint') as HTMLElement;
-    expect(hint.textContent).toContain('Неизвестный код страны: XX');
+    expect(hint.textContent).toContain('Unknown country code: XX');
 
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Укажите хотя бы одну страну.');
+    expect(alert.textContent).toBe('Select at least one country.');
     expect(postCalls).toHaveLength(0);
   });
 
-  it('оффер не число или ноль: inline-ошибка, без запроса; чип не добавляется', async () => {
+  it('offer is not a number or zero: inline error, no request; chip not added', async () => {
     const mock = renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
     fireEvent.change(offerInput(), { target: { value: 'abc' } });
-    await screen.findByText('Введите ID оффера — положительное число.', {}, { timeout: 3000 });
+    await screen.findByText('Enter the offer ID — a positive number.', {}, { timeout: 3000 });
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
     expect(offerChips()).toBeNull();
     expect(offerCalls(mock, 0)).toHaveLength(0);
 
     fireEvent.change(offerInput(), { target: { value: '0' } });
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
-    expect(offerHint().textContent).toContain('Введите ID оффера — положительное число.');
+    expect(offerHint().textContent).toContain('Enter the offer ID — a positive number.');
     expect(offerChips()).toBeNull();
 
-    // остальная форма валидна, чтобы ошибка остановилась именно на офферах
+    // the rest of the form is valid so the error stops on the offers
     fireEvent.change(nameInput(), { target: { value: 'leo_kz' } });
     fireEvent.change(geoInput(), { target: { value: 'KZ' } });
     fireEvent.keyDown(geoInput(), { key: 'Enter' });
 
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Укажите хотя бы один оффер.');
+    expect(alert.textContent).toBe('Select at least one offer.');
     expect(postCalls).toHaveLength(0);
   });
 });
 
-describe('NewCampaignPage — гео-чипы', () => {
-  it('добавление чипа: по ISO-коду и по подсказке-названию; дубли схлопываются', async () => {
+describe('NewCampaignPage — geo chips', () => {
+  it('adding a chip: by ISO code and by suggestion name; duplicates collapse', async () => {
     renderPage();
     await fillValidForm();
-    const chips = () => screen.getByLabelText('Выбранные страны');
+    const chips = () => screen.getByLabelText('Selected countries');
     expect(chips().textContent).toContain('KZ');
-    expect(chips().textContent).toContain('Казахстан');
+    expect(chips().textContent).toContain('Kazakhstan');
 
-    // по русскому названию через список подсказок
-    fireEvent.change(geoInput(), { target: { value: 'узбеки' } });
+    // by country name through the suggestion list
+    fireEvent.change(geoInput(), { target: { value: 'uzbek' } });
     const option = await screen.findByRole('option', { name: /UZ/ });
     fireEvent.mouseDown(option);
     expect(chips().textContent).toContain('UZ');
@@ -258,36 +258,36 @@ describe('NewCampaignPage — гео-чипы', () => {
     expect(chips().querySelectorAll('li')).toHaveLength(2);
   });
 
-  it('удаление чипа кнопкой и Backspace по пустому полю', async () => {
+  it('removing a chip with the button and Backspace on an empty field', async () => {
     renderPage();
     await fillValidForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Убрать KZ — Казахстан' }));
-    expect(screen.queryByLabelText('Выбранные страны')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove KZ — Kazakhstan' }));
+    expect(screen.queryByLabelText('Selected countries')).toBeNull();
 
     fireEvent.change(geoInput(), { target: { value: 'UZ' } });
     fireEvent.keyDown(geoInput(), { key: 'Enter' });
-    expect(screen.getByLabelText('Выбранные страны').textContent).toContain('UZ');
+    expect(screen.getByLabelText('Selected countries').textContent).toContain('UZ');
 
     fireEvent.change(geoInput(), { target: { value: '' } });
     fireEvent.keyDown(geoInput(), { key: 'Backspace' });
-    expect(screen.queryByLabelText('Выбранные страны')).toBeNull();
+    expect(screen.queryByLabelText('Selected countries')).toBeNull();
   });
 });
 
-describe('NewCampaignPage — офферы-чипы', () => {
-  it('кнопки «Проверить» нет; проверка при вводе без кнопки', async () => {
+describe('NewCampaignPage — offer chips', () => {
+  it('no "Check" button; checking on input without a button', async () => {
     renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
-    expect(screen.queryByRole('button', { name: 'Проверить' })).toBeNull();
-    expect(screen.queryByText('Проверить')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check' })).toBeNull();
+    expect(screen.queryByText('Check')).toBeNull();
   });
 
-  it('добавление после дебаунс-проверки: подсказка с именем и статусом, запрос ровно один на id', async () => {
+  it('adding after the debounce check: a hint with name and status, exactly one request per id', async () => {
     const mock = renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
     fireEvent.change(offerInput(), { target: { value: '18813' } });
-    await screen.findByText(/Оффер 18813: Test offer — active/, {}, { timeout: 3000 });
+    await screen.findByText(/Offer 18813: Test offer — active/, {}, { timeout: 3000 });
     expect(offerCalls(mock, 18813)).toHaveLength(1);
 
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
@@ -300,11 +300,11 @@ describe('NewCampaignPage — офферы-чипы', () => {
     expect(offerCalls(mock, 18813)).toHaveLength(1);
   });
 
-  it('404 — оффер не добавляется, при отправке блокирующая ошибка', async () => {
+  it('404 — the offer is not added, a blocking error on submit', async () => {
     const mock = renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
     fireEvent.change(offerInput(), { target: { value: '40404' } });
-    await screen.findByText('Оффер 40404 не найден в Keitaro.', {}, { timeout: 3000 });
+    await screen.findByText('Offer 40404 not found in Keitaro.', {}, { timeout: 3000 });
     expect(offerCalls(mock, 40404)).toHaveLength(1);
 
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
@@ -315,41 +315,41 @@ describe('NewCampaignPage — офферы-чипы', () => {
     fireEvent.keyDown(geoInput(), { key: 'Enter' });
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Укажите хотя бы один оффер.');
+    expect(alert.textContent).toBe('Select at least one offer.');
     expect(postCalls).toHaveLength(0);
   });
 
-  it('403 — добавляется с предупреждением, создание не блокируется', async () => {
+  it('403 — added with a warning, creation is not blocked', async () => {
     renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
     fireEvent.change(offerInput(), { target: { value: '40303' } });
-    await screen.findByText(/Оффер 40303: нет прав у ключа/, {}, { timeout: 3000 });
+    await screen.findByText(/Offer 40303: no permission for the key/, {}, { timeout: 3000 });
 
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
     expect(offerChips()?.textContent).toContain('40303');
-    expect(offerWarns()?.textContent).toContain('40303 — нет прав у ключа, проверит сервер');
+    expect(offerWarns()?.textContent).toContain('40303 — no permission for the key — the server will check');
 
     fireEvent.change(nameInput(), { target: { value: 'leo_kz' } });
     fireEvent.change(geoInput(), { target: { value: 'KZ' } });
     fireEvent.keyDown(geoInput(), { key: 'Enter' });
     fireEvent.click(submitBtn());
-    await screen.findByText('Кампания создана', {}, { timeout: 3000 });
+    await screen.findByText('Campaign created', {}, { timeout: 3000 });
     expect(postCalls).toHaveLength(1);
     expect(postCalls[0].body).toMatchObject({ offer_ids: [40303] });
   });
 
-  it('502 — добавляется с предупреждением «добавлен без проверки»', async () => {
+  it('502 — added with an "added without a check" warning', async () => {
     renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
     fireEvent.change(offerInput(), { target: { value: '50505' } });
-    await screen.findByText(/Оффер 50505: Keitaro недоступен/, {}, { timeout: 3000 });
+    await screen.findByText(/Offer 50505: Keitaro is unavailable/, {}, { timeout: 3000 });
 
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
     expect(offerChips()?.textContent).toContain('50505');
-    expect(offerWarns()?.textContent).toContain('50505 — Keitaro недоступен, добавлен без проверки');
+    expect(offerWarns()?.textContent).toContain('50505 — Keitaro is unavailable — added without a check');
   });
 
-  it('дубль игнорируется с короткой подсказкой, запрос не повторяется', async () => {
+  it('a duplicate is ignored with a short hint, no repeated request', async () => {
     const mock = renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
@@ -358,15 +358,15 @@ describe('NewCampaignPage — офферы-чипы', () => {
     expect(offerChips()?.querySelectorAll('li')).toHaveLength(1);
 
     fireEvent.change(offerInput(), { target: { value: '18813' } });
-    await screen.findByText('Оффер 18813 уже добавлен.', {}, { timeout: 3000 });
+    await screen.findByText('Offer 18813 is already added.', {}, { timeout: 3000 });
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
-    expect(offerHint().textContent).toContain('уже добавлен');
+    expect(offerHint().textContent).toContain('already added');
     expect(offerChips()?.querySelectorAll('li')).toHaveLength(1);
     await new Promise((r) => setTimeout(r, 700));
     expect(offerCalls(mock, 18813)).toHaveLength(1);
   });
 
-  it('максимум 20 офферов', async () => {
+  it('a maximum of 20 offers', async () => {
     renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
@@ -378,11 +378,11 @@ describe('NewCampaignPage — офферы-чипы', () => {
 
     fireEvent.change(offerInput(), { target: { value: '21' } });
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
-    expect(offerHint().textContent).toContain('Не больше 20 офферов.');
+    expect(offerHint().textContent).toContain('No more than 20 offers.');
     expect(offerChips()?.querySelectorAll('li')).toHaveLength(20);
   });
 
-  it('доли 50/50 при двух, пересчёт после удаления; крестик и Backspace удаляют', async () => {
+  it('50/50 shares for two, recount after removal; the cross and Backspace remove', async () => {
     const mock = renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
@@ -392,21 +392,21 @@ describe('NewCampaignPage — офферы-чипы', () => {
     expect(chips()).toHaveLength(2);
     expect(chips()[0].textContent).toContain('50%');
     expect(chips()[1].textContent).toContain('50%');
-    expect(screen.getByText('Веса равные, сумма 100.')).toBeTruthy();
+    expect(screen.getByText('Weights are equal, sum 100.')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Убрать оффер 18814' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove offer 18814' }));
     expect(chips()).toHaveLength(1);
     expect(chips()[0].textContent).toContain('100%');
-    expect(screen.queryByText('Веса равные, сумма 100.')).toBeNull();
+    expect(screen.queryByText('Weights are equal, sum 100.')).toBeNull();
 
-    // повторное добавление удалённого: имя возвращается из кэша
+    // re-adding the removed one: the name comes from the cache
     fireEvent.change(offerInput(), { target: { value: '18814' } });
-    await screen.findByText(/Оффер 18814: Offer 18814 — active/, {}, { timeout: 3000 });
+    await screen.findByText(/Offer 18814: Offer 18814 — active/, {}, { timeout: 3000 });
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
     expect(chips()).toHaveLength(2);
     expect(chips()[1].textContent).toContain('Offer 18814');
     expect(chips()[1].textContent).toContain('50%');
-    // запрос по 18814 был только один — при повторном добавлении нового нет
+    // there was only one request for 18814 — none on re-adding
     expect(offerCalls(mock, 18814)).toHaveLength(1);
 
     fireEvent.change(offerInput(), { target: { value: '' } });
@@ -414,20 +414,20 @@ describe('NewCampaignPage — офферы-чипы', () => {
     expect(chips()).toHaveLength(1);
   });
 
-  it('повторное добавление удалённого оффера — имя/статус из кэша, без нового запроса', async () => {
+  it('re-adding a removed offer — name/status from the cache, no new request', async () => {
     const mock = renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
     fireEvent.change(offerInput(), { target: { value: '18813' } });
-    await screen.findByText(/Оффер 18813: Test offer — active/, {}, { timeout: 3000 });
+    await screen.findByText(/Offer 18813: Test offer — active/, {}, { timeout: 3000 });
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
     expect(offerChips()?.textContent).toContain('Test offer');
-    fireEvent.click(screen.getByRole('button', { name: 'Убрать оффер 18813' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove offer 18813' }));
     expect(offerChips()).toBeNull();
 
-    // снова тот же ID: подсказка из кэша и чип с именем, запрос не повторяется
+    // the same ID again: hint from the cache and a chip with the name, no repeated request
     fireEvent.change(offerInput(), { target: { value: '18813' } });
-    await screen.findByText(/Оффер 18813: Test offer — active/, {}, { timeout: 3000 });
+    await screen.findByText(/Offer 18813: Test offer — active/, {}, { timeout: 3000 });
     fireEvent.keyDown(offerInput(), { key: 'Enter' });
     expect(offerChips()?.querySelectorAll('li')).toHaveLength(1);
     expect(offerChips()?.textContent).toContain('Test offer');
@@ -436,7 +436,7 @@ describe('NewCampaignPage — офферы-чипы', () => {
     expect(offerCalls(mock, 18813)).toHaveLength(1);
   });
 
-  it('доли 34/33/33 при трёх офферах (остаток — первому)', async () => {
+  it('34/33/33 shares for three offers (the remainder goes to the first)', async () => {
     renderPage();
     await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
@@ -447,41 +447,41 @@ describe('NewCampaignPage — офферы-чипы', () => {
     expect(chips[0].textContent).toContain('34%');
     expect(chips[1].textContent).toContain('33%');
     expect(chips[2].textContent).toContain('33%');
-    expect(screen.getByText('Веса равные, сумма 100.')).toBeTruthy();
+    expect(screen.getByText('Weights are equal, sum 100.')).toBeTruthy();
   });
 
-  it('без офферов отправка блокируется', async () => {
+  it('submit is blocked without offers', async () => {
     renderPage();
     await fillValidForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Убрать оффер 18813' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove offer 18813' }));
     expect(offerChips()).toBeNull();
 
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Укажите хотя бы один оффер.');
+    expect(alert.textContent).toBe('Select at least one offer.');
     expect(postCalls).toHaveLength(0);
   });
 });
 
-describe('NewCampaignPage — хлебные крошки', () => {
-  it('Главная → Кампании → Создание кампании; текущая — не ссылка', async () => {
+describe('NewCampaignPage — breadcrumbs', () => {
+  it('Home → Campaigns → New campaign; the current one is not a link', async () => {
     renderPage();
-    const nav = await screen.findByRole('navigation', { name: 'Хлебные крошки' }, { timeout: 3000 });
-    expect(within(nav).getByRole('link', { name: 'Главная' }).getAttribute('href')).toBe('/');
-    expect(within(nav).getByRole('link', { name: 'Кампании' }).getAttribute('href')).toBe('/campaigns');
-    const current = within(nav).getByText('Создание кампании');
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumbs' }, { timeout: 3000 });
+    expect(within(nav).getByRole('link', { name: 'Home' }).getAttribute('href')).toBe('/');
+    expect(within(nav).getByRole('link', { name: 'Campaigns' }).getAttribute('href')).toBe('/campaigns');
+    const current = within(nav).getByText('New campaign');
     expect(current.getAttribute('aria-current')).toBe('page');
-    expect(within(nav).queryByRole('link', { name: 'Создание кампании' })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: 'New campaign' })).toBeNull();
   });
 });
 
-describe('NewCampaignPage — сабмит', () => {
-  it('успех: POST с телом контракта, карточка с ID/alias/ссылкой, «Открыть потоки» ведёт на потоки', async () => {
+describe('NewCampaignPage — submit', () => {
+  it('success: POST with the contract body, a card with ID/alias/link, "Open flows" leads to flows', async () => {
     renderPage();
     await fillValidForm();
     fireEvent.click(submitBtn());
 
-    await screen.findByText('Кампания создана', {}, { timeout: 3000 });
+    await screen.findByText('Campaign created', {}, { timeout: 3000 });
     expect(postCalls[0].body).toEqual({
       name: 'leo_kz',
       geos: ['KZ'],
@@ -498,11 +498,11 @@ describe('NewCampaignPage — сабмит', () => {
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noreferrer');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть потоки' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open flows' }));
     expect(await screen.findByText('streams-probe', {}, { timeout: 2000 })).toBeTruthy();
   });
 
-  it('двойной клик — один POST; кнопка заблокирована и aria-busy на время запроса', async () => {
+  it('double click — one POST; the button is disabled and aria-busy during the request', async () => {
     let resolvePost: (value?: unknown) => void = () => {};
     const pending = new Promise((resolve) => {
       resolvePost = resolve;
@@ -520,18 +520,18 @@ describe('NewCampaignPage — сабмит', () => {
     );
     await fillValidForm();
     fireEvent.click(submitBtn());
-    // кнопка уже неактивна и aria-busy
+    // the button is already disabled and aria-busy
     await waitFor(() => {
       expect(submitBtn().disabled).toBe(true);
       expect(submitBtn().getAttribute('aria-busy')).toBe('true');
     });
     fireEvent.click(submitBtn());
     resolvePost();
-    await screen.findByText('Кампания создана', {}, { timeout: 3000 });
+    await screen.findByText('Campaign created', {}, { timeout: 3000 });
     expect(postCalls).toHaveLength(1);
   });
 
-  it('422 — текст по полю из detail', async () => {
+  it('422 — the text by the field from detail', async () => {
     renderPage(
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === '/api/campaign-options') return json(200, OPTIONS);
@@ -548,7 +548,7 @@ describe('NewCampaignPage — сабмит', () => {
     expect(alert.textContent).toBe('geos must contain ISO-3166 alpha-2 codes');
   });
 
-  it('409 — подтверждение дубля, повтор уходит с confirm_duplicate=true', async () => {
+  it('409 — duplicate confirmation, the retry goes with confirm_duplicate=true', async () => {
     let calls = 0;
     renderPage(
       vi.fn(async (url: string, init?: RequestInit) => {
@@ -570,16 +570,16 @@ describe('NewCampaignPage — сабмит', () => {
     fireEvent.click(submitBtn());
 
     const alert = await screen.findByRole('alert', {}, { timeout: 3000 });
-    expect(alert.textContent).toContain('Кампания с таким названием уже есть, создать ещё одну?');
-    expect(screen.getByRole('link', { name: 'Открыть существующую (ID 777)' })).toBeTruthy();
+    expect(alert.textContent).toContain('A campaign with this name already exists — create another one?');
+    expect(screen.getByRole('link', { name: 'Open existing (ID 777)' })).toBeTruthy();
     expect(postCalls[0].body).toMatchObject({ confirm_duplicate: false });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Всё равно создать' }));
-    await screen.findByText('Кампания создана', {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Create anyway' }));
+    await screen.findByText('Campaign created', {}, { timeout: 3000 });
     expect(postCalls[1].body).toMatchObject({ confirm_duplicate: true, name: 'leo_kz', geos: ['KZ'] });
   });
 
-  it('403 — текст Keitaro показывается как есть', async () => {
+  it('403 — the Keitaro text is shown as is', async () => {
     renderPage(
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === '/api/campaign-options') return json(200, OPTIONS);
@@ -596,13 +596,13 @@ describe('NewCampaignPage — сабмит', () => {
     expect(alert.textContent).toBe('Keitaro permission denied: campaigns.create');
   });
 
-  it('502 — «Keitaro недоступен» с шагом сбоя из detail', async () => {
+  it('502 — "Keitaro is unavailable" with the failure step from detail', async () => {
     renderPage(
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === '/api/campaign-options') return json(200, OPTIONS);
         if (url === '/api/campaigns' && init?.method === 'POST') {
           postCalls.push({ url, body: null });
-          return json(502, { detail: 'сбой на шаге: offer stream' });
+          return json(502, { detail: 'failure at step: offer stream' });
         }
         return json(200, {});
       }),
@@ -610,10 +610,10 @@ describe('NewCampaignPage — сабмит', () => {
     await fillValidForm();
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert', {}, { timeout: 3000 });
-    expect(alert.textContent).toBe('Keitaro недоступен: сбой на шаге: offer stream');
+    expect(alert.textContent).toBe('Keitaro is unavailable: failure at step: offer stream');
   });
 
-  it('сетевая ошибка (fetch reject) — «Сеть недоступна.»', async () => {
+  it('network error (fetch reject) — "Network unavailable."', async () => {
     renderPage(
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === '/api/campaign-options') return json(200, OPTIONS);
@@ -626,6 +626,6 @@ describe('NewCampaignPage — сабмит', () => {
     await fillValidForm();
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert', {}, { timeout: 3000 });
-    expect(alert.textContent).toBe('Сеть недоступна.');
+    expect(alert.textContent).toBe('Network unavailable.');
   });
 });
