@@ -35,9 +35,16 @@ from ..constants import equal_shares
 from ..db import get_db
 from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
-from ..models import StreamOfferPending, StreamOfferState, utcnow
+from ..models import StreamOfferPending, StreamOfferPin, StreamOfferState, utcnow
 
 logger = logging.getLogger(__name__)
+
+# Правило 6 контракта пинов: detail 409 при добавлении офера в поток,
+# где свободного веса нет.
+PIN_NO_FREE_WEIGHT = (
+    "Все оферы зафиксированы: свободного веса нет. "
+    "Снимите фиксацию хотя бы с одного офера."
+)
 
 router = APIRouter(prefix="/api/streams", tags=["streams"])
 # Local-first эндпоинты: путь живёт под /api/campaigns/{cid}/streams,
@@ -63,25 +70,90 @@ def _share_of(entry: dict) -> int | None:
     return value
 
 
-def _scaled_to_100(values: list[int]) -> list[int]:
-    """Масштабировать веса к 100, сохранив пропорции.
+def _equal_split(count: int, total: int) -> list[int]:
+    """Равные целые доли с суммой ровно total, остаток — первым по порядку.
+
+    Обобщение equal_shares: _equal_split(n, 100) == equal_shares(n).
+    """
+    if count <= 0:
+        return []
+    base, rest = divmod(total, count)
+    return [base + (1 if i < rest else 0) for i in range(count)]
+
+
+def _scaled_to_total(values: list[int], total: int) -> list[int]:
+    """Масштабировать веса к сумме total, сохранив пропорции.
 
     Остаток от округления добирают строки с самой большой дробной частью,
     поэтому равные веса дают прежнее «34/33/33», а 40/30/20 -> 44/33/23.
+    Сумма нулей/пустой список -> равные доли total (как equal_shares).
     """
-    total = sum(values)
-    if total <= 0:
-        return equal_shares(len(values))
-    exact = [v * 100 / total for v in values]
+    n = len(values)
+    if n == 0:
+        return []
+    s = sum(values)
+    if s <= 0:
+        return _equal_split(n, total)
+    exact = [v * total / s for v in values]
     out = [int(x) for x in exact]
-    leftover = 100 - sum(out)
-    order = sorted(range(len(exact)), key=lambda i: exact[i] - out[i], reverse=True)
+    leftover = total - sum(out)
+    order = sorted(range(n), key=lambda i: exact[i] - out[i], reverse=True)
     for i in order[:leftover]:
         out[i] += 1
     return out
 
 
-def reshare(offers: list[dict], *, rescale: bool = False) -> list[dict]:
+def _scaled_to_100(values: list[int]) -> list[int]:
+    """Масштабировать веса к 100, сохранив пропорции."""
+    return _scaled_to_total(values, 100)
+
+
+def _pins_for_stream(db: Session, stream_id: int) -> dict[int, int | None]:
+    """Пины потока из БД: offer_id -> share (None, если share не записан)."""
+    rows = (
+        db.query(StreamOfferPin)
+        .filter(StreamOfferPin.stream_id == stream_id)
+        .all()
+    )
+    return {r.offer_id: r.share for r in rows}
+
+
+def _resolved_pins(
+    offers: list[dict], pins: dict[int, int | None]
+) -> dict[int, int]:
+    """Пины финального состава с разрешённым весом (правило 2 контракта).
+
+    Живой офер — его текущий share из Keitaro; черновик (share не пришёл) —
+    share из строки пина. Пин без известного веса (нет ни в Keitaro, ни в
+    БД) пином не считается и в Σпинов не попадает.
+    """
+    resolved: dict[int, int] = {}
+    for o in offers:
+        oid = o.get("offer_id")
+        if oid not in pins:
+            continue
+        share = _share_of(o)
+        if share is None:
+            pin_share = pins[oid]
+            if isinstance(pin_share, int) and not isinstance(pin_share, bool):
+                share = pin_share
+        if share is not None:
+            resolved[oid] = share
+    return resolved
+
+
+def _check_pins_free_weight(resolved: dict[int, int], *, adding: bool) -> None:
+    """Правило 6: добавлять офер нельзя, если свободного веса нет (Σпинов >= 100)."""
+    if adding and sum(resolved.values()) >= 100:
+        raise HTTPException(409, PIN_NO_FREE_WEIGHT)
+
+
+def reshare(
+    offers: list[dict],
+    *,
+    rescale: bool = False,
+    pins: dict[int, int | None] | None = None,
+) -> list[dict]:
     """Доли для PUT в Keitaro.
 
     Ручные веса, выставленные в Keitaro, не перетираются: офер, который
@@ -91,9 +163,85 @@ def reshare(offers: list[dict], *, rescale: bool = False) -> list[dict]:
     rescale=True (удаление): веса живых масштабируются к 100 с сохранением
     пропорций, как это делает интерфейс Keitaro. Пустой список -> пустой
     payload.
+
+    Пины (pins: offer_id -> share из stream_offer_pin):
+    - запаянных в финальном составе нет — прежнее поведение без изменений;
+    - остался один офер — его доля 100;
+    - добавление: незапаянные (и живые, и черновики) делят 100 − Σпинов
+      поровну, остаток от деления — первым по порядку потока, пины
+      не меняются;
+    - удаление: незапаянные живые масштабируются пропорционально на
+      (100 − Σпинов); если незапаянных не осталось — пины масштабируются
+      пропорционально до 100. Если в этом же apply добавляются черновики,
+      свободный бюджет делится между живыми (пропорция) и черновиками
+      (поровну) так, что средний вес живых равен доле каждого черновика.
     """
     if not offers:
         return []
+    if len(offers) == 1:
+        # Единственный офер в финальном составе — доля 100 (в прежнем коде
+        # это же давали equal_shares(1) и _scaled_to_100([v])).
+        return [
+            {
+                "offer_id": offers[0]["offer_id"],
+                "share": 100,
+                "state": offers[0].get("state") or "active",
+            }
+        ]
+
+    resolved = _resolved_pins(offers, pins or {})
+    if not resolved:
+        return _reshare_plain(offers, rescale=rescale)
+
+    free = max(0, 100 - sum(resolved.values()))
+    unpinned = [o for o in offers if o["offer_id"] not in resolved]
+    shares: dict[int, int] = dict(resolved)
+
+    if not unpinned:
+        if rescale:
+            # Незапаянных не осталось: пины масштабируются пропорционально
+            # до 100 (Σпинов == 100 — масштабирование ничего не меняет).
+            scaled = _scaled_to_total(
+                [resolved[o["offer_id"]] for o in offers], 100
+            )
+            for o, value in zip(offers, scaled):
+                shares[o["offer_id"]] = value
+        # Иначе (чистый add при всех запаянных) сюда не доходим: 409
+        # «свободного веса нет» отдаётся до reshare.
+    elif not rescale:
+        # Добавление: незапаянные делят свободный бюджет поровну (правило 3).
+        split = _equal_split(len(unpinned), free)
+        for o, value in zip(unpinned, split):
+            shares[o["offer_id"]] = value
+    else:
+        # Удаление: живые незапаянные — пропорционально свободному бюджету.
+        drafts = [o for o in unpinned if _share_of(o) is None]
+        known = [o for o in unpinned if _share_of(o) is not None]
+        if not drafts:
+            scaled = _scaled_to_total([_share_of(o) for o in known], free)
+            for o, value in zip(known, scaled):
+                shares[o["offer_id"]] = value
+        else:
+            known_budget = free * len(known) // (len(known) + len(drafts))
+            scaled = _scaled_to_total([_share_of(o) for o in known], known_budget)
+            for o, value in zip(known, scaled):
+                shares[o["offer_id"]] = value
+            draft_split = _equal_split(len(drafts), free - known_budget)
+            for o, value in zip(drafts, draft_split):
+                shares[o["offer_id"]] = value
+
+    return [
+        {
+            "offer_id": o["offer_id"],
+            "share": shares[o["offer_id"]],
+            "state": o.get("state") or "active",
+        }
+        for o in offers
+    ]
+
+
+def _reshare_plain(offers: list[dict], *, rescale: bool) -> list[dict]:
+    """Прежнее поведение reshare (без запаянных оферов) — не менялось."""
     known = [o for o in offers if _share_of(o) is not None]
     unknown = [o for o in offers if _share_of(o) is None]
     shares: dict[int, int] = {}
@@ -194,6 +342,27 @@ def _archive_offer(
         db.commit()
 
 
+def _delete_pin_quiet(db: Session, *, stream_id: int, offer_id: int) -> None:
+    """Офер удалён из потока — его пин больше не имеет смысла.
+
+    Ошибка записи не ломает 200-ответ (как с archive-строкой): пин долечит
+    очистка в apply (пины оферов вне финального состава удаляются).
+    """
+    try:
+        db.query(StreamOfferPin).filter(
+            StreamOfferPin.stream_id == stream_id,
+            StreamOfferPin.offer_id == offer_id,
+        ).delete()
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "stream_offer_pin delete failed: stream=%s offer=%s",
+            stream_id,
+            offer_id,
+        )
+
+
 async def _get_stream_or_raise(keitaro: KeitaroClient, stream_id: int) -> dict:
     try:
         return await keitaro.get_stream(stream_id)
@@ -259,7 +428,10 @@ async def add_offer_to_stream(
         return {"added": False, "already": True, "stream": stream}
 
     offers.append({"offer_id": body.offer_id, "state": "active"})
-    payload = reshare(offers)
+    # Правило 6: добавлять при Σпинов >= 100 нельзя (живые веса из потока).
+    stream_pins = _pins_for_stream(db, stream_id)
+    _check_pins_free_weight(_resolved_pins(offers, stream_pins), adding=True)
+    payload = reshare(offers, pins=stream_pins)
     try:
         updated = await keitaro.update_stream_offers(
             stream_id, stream.get("campaign_id"), payload
@@ -323,7 +495,12 @@ async def remove_offer_from_stream(
 
     # Удаление последнего офера разрешено: Keitaro принимает offers: []
     # (проверено живым PUT на потоке 1313077, 2026-11-17).
-    payload = reshare([o for o in offers if o.get("offer_id") != offer_id], rescale=True)
+    stream_pins = _pins_for_stream(db, stream_id)
+    payload = reshare(
+        [o for o in offers if o.get("offer_id") != offer_id],
+        rescale=True,
+        pins=stream_pins,
+    )
     try:
         updated = await keitaro.update_stream_offers(
             stream_id, stream.get("campaign_id"), payload
@@ -349,6 +526,8 @@ async def remove_offer_from_stream(
             stream_id,
             offer_id,
         )
+    # Офер удалён из потока — его пин больше не имеет смысла.
+    _delete_pin_quiet(db, stream_id=stream_id, offer_id=offer_id)
     return {"removed": True, "already": False, "stream": updated}
 
 
@@ -388,20 +567,70 @@ def _pending_payload(rows: list[StreamOfferPending]) -> list[dict]:
     ]
 
 
+def _pins_payload(rows: list[StreamOfferPin]) -> list[dict]:
+    return [
+        {
+            "stream_id": r.stream_id,
+            "offer_id": r.offer_id,
+            "share": r.share,
+        }
+        for r in rows
+    ]
+
+
 @pending_router.get("/pending")
 async def get_campaign_streams_pending(
     campaign_id: int = FPath(gt=0),
     db: Session = Depends(get_db),
 ):
-    """Ожидающие изменения кампании: только локальная БД — без API-ключа
-    и без похода в Keitaro (работает и при недоступном Keitaro)."""
+    """Ожидающие изменения кампании + пины её потоков: только локальная БД —
+    без API-ключа и без похода в Keitaro (работает и при недоступном Keitaro)."""
     rows = (
         db.query(StreamOfferPending)
         .filter(StreamOfferPending.campaign_id == campaign_id)
         .order_by(StreamOfferPending.id)
         .all()
     )
-    return {"pending": _pending_payload(rows)}
+    pin_rows = (
+        db.query(StreamOfferPin)
+        .filter(StreamOfferPin.campaign_id == campaign_id)
+        .order_by(StreamOfferPin.id)
+        .all()
+    )
+    return {"pending": _pending_payload(rows), "pins": _pins_payload(pin_rows)}
+
+
+def _pending_pins_blocked(db: Session, *, stream_id: int, removes: list[int]) -> bool:
+    """Правило 6 по данным БД (без Keitaro): Σпинов живых оферов >= 100.
+
+    Живой состав — StreamOfferState (archived_at IS NULL); пины удаляемых
+    оферов не считаются — их удаление освобождает вес. Если живых данных
+    нет, не блокируем: финальная проверка — в apply.
+    """
+    live_ids = {
+        r.offer_id
+        for r in (
+            db.query(StreamOfferState)
+            .filter(
+                StreamOfferState.stream_id == stream_id,
+                StreamOfferState.archived_at.is_(None),
+            )
+            .all()
+        )
+    }
+    if not live_ids:
+        return False
+    removed = set(removes)
+    pins = {
+        oid: share
+        for oid, share in _pins_for_stream(db, stream_id).items()
+        if oid in live_ids and oid not in removed
+    }
+    pinned_shares = [
+        share for share in pins.values()
+        if isinstance(share, int) and not isinstance(share, bool)
+    ]
+    return sum(pinned_shares) >= 100
 
 
 @pending_router.put("/{stream_id}/pending")
@@ -426,6 +655,9 @@ async def put_stream_pending(
             "Один и тот же офер не может быть одновременно в add и remove: "
             f"{sorted(overlap)}",
         )
+
+    if add and _pending_pins_blocked(db, stream_id=stream_id, removes=remove):
+        raise HTTPException(409, PIN_NO_FREE_WEIGHT)
 
     db.query(StreamOfferPending).filter(
         StreamOfferPending.stream_id == stream_id
@@ -452,6 +684,61 @@ async def put_stream_pending(
         .all()
     )
     return {"pending": _pending_payload(rows)}
+
+
+class PinEntryBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    offer_id: int = Field(gt=0)
+    share: int | None = Field(ge=0, le=100)
+
+
+class PinsBody(BaseModel):
+    """Тело PUT .../pins: полный набор пинов потока (замена целиком).
+
+    Пин — свойство пары (stream_id, offer_id): дубли внутри списка
+    схлопываются (первое вхождение). share 0..100 или null. Keitaro не
+    вызывается; campaign_id из пути — только группировка (как у PUT
+    pending), проверка принадлежности — в apply.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    pins: list[PinEntryBody]
+
+
+@pending_router.put("/{stream_id}/pins")
+async def put_stream_pins(
+    campaign_id: int = FPath(gt=0),
+    stream_id: int = FPath(gt=0),
+    body: PinsBody = ...,
+    db: Session = Depends(get_db),
+):
+    """Заменить набор пинов потока целиком (без Keitaro)."""
+    seen: dict[int, int | None] = {}
+    for entry in body.pins:
+        seen.setdefault(entry.offer_id, entry.share)
+
+    db.query(StreamOfferPin).filter(
+        StreamOfferPin.stream_id == stream_id
+    ).delete()
+    for oid, share in seen.items():
+        db.add(
+            StreamOfferPin(
+                campaign_id=campaign_id,
+                stream_id=stream_id,
+                offer_id=oid,
+                share=share,
+            )
+        )
+    db.commit()
+    rows = (
+        db.query(StreamOfferPin)
+        .filter(StreamOfferPin.stream_id == stream_id)
+        .order_by(StreamOfferPin.id)
+        .all()
+    )
+    return {"pins": _pins_payload(rows)}
 
 
 def _apply_pending_to_db(
@@ -493,6 +780,36 @@ def _apply_pending_to_db(
         db.query(StreamOfferPending).filter(
             StreamOfferPending.stream_id == stream_id
         ).delete()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _apply_pins_after_put(
+    db: Session,
+    *,
+    stream_id: int,
+    final_ids: list[int],
+    payload_by_id: dict[int, dict],
+) -> None:
+    """Пины после успешного PUT: пины оферов, которых нет в финальном
+    составе, удаляются; share пинов оставшихся — из PUT-payload (правило 2:
+    вес запаянного живого офера — его текущий share из Keitaro, в том числе
+    после пропорционального масштабирования пинов до 100)."""
+    try:
+        for row in (
+            db.query(StreamOfferPin)
+            .filter(StreamOfferPin.stream_id == stream_id)
+            .all()
+        ):
+            if row.offer_id not in final_ids:
+                db.delete(row)
+                continue
+            entry = payload_by_id.get(row.offer_id)
+            share = entry.get("share") if entry else None
+            if isinstance(share, int) and not isinstance(share, bool):
+                row.share = share
         db.commit()
     except Exception:
         db.rollback()
@@ -579,8 +896,17 @@ async def apply_stream_pending(
 
     final = [live_by_id[oid] for oid in final_ids if oid in live_by_id]
     final += [{"offer_id": oid, "state": "active"} for oid in final_ids if oid not in live_by_id]
+
+    stream_pins = _pins_for_stream(db, stream_id)
+    # Правило 6 (финальная проверка): добавлять при Σпинов >= 100 нельзя.
+    # Пины считаются по финальному составу — пины удаляемых оферов в него
+    # не входят (их удаление освобождает вес).
+    if adds:
+        _check_pins_free_weight(_resolved_pins(final, stream_pins), adding=True)
     payload = reshare(
-        final, rescale=any(oid in live_by_id for oid in removes)
+        final,
+        rescale=any(oid in live_by_id for oid in removes),
+        pins=stream_pins,
     )
     try:
         updated = await keitaro.update_stream_offers(
@@ -601,6 +927,12 @@ async def apply_stream_pending(
             payload_by_id=payload_by_id,
             removes=removes,
             adds=adds,
+        )
+        _apply_pins_after_put(
+            db,
+            stream_id=stream_id,
+            final_ids=final_ids,
+            payload_by_id=payload_by_id,
         )
     except Exception:
         # PUT уже прошёл — изменения в Keitaro состоялись; ошибка локальной

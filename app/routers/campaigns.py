@@ -8,7 +8,7 @@ from ..constants import CAMPAIGN_LIST_FIELDS
 from ..db import get_db
 from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
-from ..models import StreamOfferState, utcnow
+from ..models import StreamOfferPin, StreamOfferState, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +134,20 @@ def sync_stream_offer_state(db: Session, campaign_id: int, streams) -> None:
         if (row.stream_id, row.offer_id) not in seen:
             row.archived_at = now
             row.archive_reason = "keitaro"
+    # Правило 2 контракта пинов: вес запаянного живого офера — его текущий
+    # share из Keitaro, поэтому share пина обновляем из живого ответа.
+    if stream_ids:
+        for row in (
+            db.query(StreamOfferPin)
+            .filter(StreamOfferPin.stream_id.in_(stream_ids))
+            .all()
+        ):
+            entry = entries.get((row.stream_id, row.offer_id))
+            if entry is None:
+                continue
+            share = entry.get("share")
+            if isinstance(share, int) and not isinstance(share, bool):
+                row.share = share
     db.commit()
 
 
