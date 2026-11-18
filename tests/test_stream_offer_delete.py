@@ -8,12 +8,10 @@ test_stream_offer_add.py; здесь добавляется только мок 
 кампании для синхронизации.
 """
 
-from types import SimpleNamespace
-
 import httpx
 import pytest
 
-from app.keybox import KeyStore
+from app.keybox import KeyStore, get_key_store
 from app.main import app
 from app.models import StreamOfferState, utcnow
 from app.routers.campaigns import get_keitaro_with_key
@@ -433,17 +431,13 @@ def test_archive_endpoint_fields_and_ordering():
     assert top["archived_at"] == newer.replace(tzinfo=None).isoformat()
 
 
-def test_archive_endpoint_works_without_api_key(tmp_path, monkeypatch):
+def test_archive_endpoint_works_without_api_key(tmp_path):
     h = StreamsHandler(LANDINGS_3)
     c, Session = make_client(h)
-    # Реальная проверка ключа вместо тестового оверрайда: файла ключа нет,
-    # env пуст — data-эндпоинты дают 409, а архив всё равно 200.
-    app.dependency_overrides[get_keitaro_with_key] = lambda: get_keitaro_with_key(
-        KeyStore(tmp_path / "absent.key")
-    )
-    monkeypatch.setattr(
-        "app.keybox.get_settings", lambda: SimpleNamespace(keitaro_api_key="")
-    )
+    # Реальная проверка ключа вместо тестового оверрайда: файла ключа нет
+    # (env-фолбэка больше нет) — data-эндпоинты дают 409, а архив всё равно 200.
+    app.dependency_overrides.pop(get_keitaro_with_key, None)
+    app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
     seed_state(Session, STREAM_ID, 25329, share=33, state="paused",
                archived_at=utcnow(), archive_reason="user")
 

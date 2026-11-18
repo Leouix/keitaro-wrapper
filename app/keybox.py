@@ -1,16 +1,14 @@
 """Хранение и маскирование API-ключа Keitaro.
 
-Ключ никогда не попадает в ответы API, логи и БД: только файл
-`.keitaro_api_key` (0600) в корне проекта или переменная окружения
-KEITARO_API_KEY из .env как дефолт.
+Ключ никогда не попадает в ответы API, логи и БД: единственный источник —
+файл `.keitaro_api_key` (0600) в корне проекта, туда он попадает только
+через UI (POST /api/settings/api-key).
 """
 
 import os
 from pathlib import Path
 
 from fastapi import Depends
-
-from .config import get_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 KEY_FILE = PROJECT_ROOT / ".keitaro_api_key"
@@ -57,12 +55,13 @@ def mask_key(key: str) -> str:
 
 
 def resolve_key(store: KeyStore | None = None) -> tuple[str, str] | None:
-    """Активный ключ и его источник ('file' | 'env') либо None."""
+    """Активный ключ и его источник (всегда 'file') либо None.
+
+    Env-фолбэк удалён (2026-11-18): ключ задаётся только через UI и живёт
+    в файле — один источник правды для всех эндпоинтов.
+    """
     store = store or get_key_store()
     file_key = store.read()
     if file_key:
         return file_key, "file"
-    env_key = (get_settings().keitaro_api_key or "").strip()
-    if env_key:
-        return env_key, "env"
     return None

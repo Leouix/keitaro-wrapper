@@ -507,14 +507,12 @@ def test_get_pending_only_own_campaign_ordered_by_id():
 # --- 7. pending работает без API-ключа (apply — нет) -------------------------
 
 
-def test_pending_without_api_key_but_apply_needs_one(tmp_path, monkeypatch):
+def test_pending_without_api_key_but_apply_needs_one(tmp_path):
     h = PendingHandler(LANDINGS_3)
     c, Session = make_app_client(h)
-    # Никакого ключа нет: data-эндпоинты дают 409, pending всё равно работает.
+    # Никакого ключа нет (env-фолбэка больше нет): data-эндпоинты дают 409,
+    # pending всё равно работает.
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
-    monkeypatch.setattr(
-        "app.keybox.get_settings", lambda: __import__("types").SimpleNamespace(keitaro_api_key="")
-    )
 
     r_streams = c.get(f"/api/campaigns/{CAMPAIGN_ID}/streams")
     assert r_streams.status_code == 409

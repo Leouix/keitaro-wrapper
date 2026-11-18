@@ -5,10 +5,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import Base, engine
-from .keitaro import KeitaroClient, KeitaroUnavailable
+from .keitaro import KeitaroUnavailable
 from .routers import campaigns, offers, streams
 from .routers import settings as settings_router
-from .routers.campaigns import get_keitaro
+from .routers.campaigns import get_keitaro_with_key
 
 Base.metadata.create_all(bind=engine)
 
@@ -87,8 +87,9 @@ def healthz():
 
 
 @app.get("/healthz/keitaro")
-async def healthz_keitaro(keitaro: KeitaroClient = Depends(get_keitaro)):
-    # Пинг Admin API: проверка доступности — один запрос.
+async def healthz_keitaro(keitaro: KeitaroClient = Depends(get_keitaro_with_key)):
+    # Пинг Admin API тем же ключом, что и data-эндпоинты (файл .keitaro_api_key).
+    # Без настроенного ключа — 409 «API key is not configured».
     try:
         await keitaro.get_campaigns()
     except KeitaroUnavailable:

@@ -9,9 +9,6 @@ from app.routers.settings import _verify_client
 
 from tests.conftest import HTML_LOGIN_PAGE, PERMISSION_ERROR
 
-# conftest задаёт KEITARO_API_KEY до импорта app.*
-ENV_KEY = "dummy-test-key-not-a-real-secret"  # 32 символа
-
 
 @pytest.fixture()
 def key_store(tmp_path):
@@ -33,18 +30,21 @@ def _patch_verify(monkeypatch, handler):
     )
 
 
-def test_settings_masks_env_key(client):
+def test_settings_not_configured_without_key_file(client):
     r = client.get("/api/settings")
     assert r.status_code == 200
-    assert r.json() == {"configured": True, "key_masked": "dumm…cret", "source": "env"}
+    assert r.json() == {"configured": False, "key_masked": None, "source": None}
 
 
-def test_settings_never_returns_full_key(client):
+def test_settings_never_returns_full_key(client, key_store):
+    key_store.write("k" * 24)
     r = client.get("/api/settings")
-    assert ENV_KEY not in r.text
+    assert r.status_code == 200
+    assert "kkkkkkkkkkkkkkkkkkkkkkkk" not in r.text
+    assert r.json()["key_masked"] == "kkkk…kkkk"
 
 
-def test_file_key_takes_precedence_over_env(client, key_store):
+def test_file_key_is_the_only_source(client, key_store):
     key_store.write("f" * 20)
     r = client.get("/api/settings")
     assert r.status_code == 200
@@ -66,7 +66,6 @@ def test_save_api_key_success(client, monkeypatch, key_store):
     assert body["configured"] is True
     assert body["source"] == "file"
     assert body["key_masked"] == "kkkk…kkkk"
-    # Проверка шла именно новым ключом, не тем, что в .env.
     assert seen["sent"] == "k" * 24
     assert key_store.read() == "k" * 24
     # Файл 0600.

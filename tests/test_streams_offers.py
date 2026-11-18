@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -122,13 +120,9 @@ def test_offers_502_when_keitaro_5xx():
     app.dependency_overrides.clear()
 
 
-def test_streams_409_without_configured_key(tmp_path, monkeypatch):
-    # Нет файла ключа и нет ключа в env → 409 без похода в Keitaro.
+def test_streams_409_without_configured_key(tmp_path):
+    # Нет файла ключа (env-фолбэка больше нет) → 409 без похода в Keitaro.
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
-    monkeypatch.setattr(
-        "app.keybox.get_settings",
-        lambda: SimpleNamespace(keitaro_api_key=""),
-    )
     try:
         c = TestClient(app)
         r = c.get("/api/campaigns/211903/streams")
@@ -138,12 +132,8 @@ def test_streams_409_without_configured_key(tmp_path, monkeypatch):
     assert r.json() == {"detail": "API key is not configured"}
 
 
-def test_offers_409_without_configured_key(tmp_path, monkeypatch):
+def test_offers_409_without_configured_key(tmp_path):
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
-    monkeypatch.setattr(
-        "app.keybox.get_settings",
-        lambda: SimpleNamespace(keitaro_api_key=""),
-    )
     try:
         c = TestClient(app)
         r = c.get("/api/offers/25327")

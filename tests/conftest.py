@@ -1,10 +1,5 @@
 import hashlib
-import os
 from pathlib import Path
-
-# Ключ обязан существовать до первого импорта app.* (get_settings кэшируется).
-# Значение фиктивное — тесты ходят только в MockTransport.
-os.environ.setdefault("KEITARO_API_KEY", "dummy-test-key-not-a-real-secret")
 
 import httpx
 import pytest
@@ -18,6 +13,8 @@ from app.keitaro import KeitaroClient
 from app.main import app
 from app.models import CampaignCache
 from app.routers.campaigns import get_keitaro
+
+TEST_KEY = "dummy-test-key-not-a-real-secret"
 
 CAMPAIGNS = [
     {
@@ -46,7 +43,8 @@ def _legacy_response(request: httpx.Request) -> httpx.Response:
 
 
 def make_keitaro(handler) -> KeitaroClient:
-    return KeitaroClient(transport=httpx.MockTransport(handler))
+    # Ключ фиктивный — реального запроса не будет: транспорт подменён.
+    return KeitaroClient(api_key=TEST_KEY, transport=httpx.MockTransport(handler))
 
 
 def make_app_client(handler, extra_overrides=None) -> tuple[TestClient, sessionmaker]:

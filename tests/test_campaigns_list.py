@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -131,12 +129,9 @@ def test_list_never_leaks_token():
     assert "domain" not in r.text
 
 
-def test_list_409_without_configured_key(tmp_path, monkeypatch):
+def test_list_409_without_configured_key(tmp_path):
+    # Нет файла ключа (env-фолбэка больше нет) → 409 без похода в Keitaro.
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
-    monkeypatch.setattr(
-        "app.keybox.get_settings",
-        lambda: SimpleNamespace(keitaro_api_key=""),
-    )
     try:
         c = TestClient(app)
         r = c.get("/api/campaigns", params={"query": "leo"})

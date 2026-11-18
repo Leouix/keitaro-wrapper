@@ -9,11 +9,13 @@ class KeitaroUnavailable(Exception):
 
 
 class KeitaroClient:
-    def __init__(self, api_key: str | None = None, api_base: str | None = None, transport=None):
+    def __init__(self, api_key: str, api_base: str | None = None, transport=None):
         s = get_settings()
         self.base_url = s.keitaro_base_url.rstrip("/")
         self.api_base = (api_base or s.keitaro_api_base).rstrip("/")
-        self.api_key = api_key or s.keitaro_api_key
+        # Ключ обязателен: data-клиент строится только с явно переданным
+        # ключом из resolve_key() (файл .keitaro_api_key). Env-фолбэка нет.
+        self.api_key = api_key
         self.timeout, self.retries = s.keitaro_timeout, s.keitaro_retries
         self._transport, self._client = transport, None
 

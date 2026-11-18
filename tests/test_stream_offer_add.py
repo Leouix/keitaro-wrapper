@@ -5,7 +5,6 @@ PUT-запросы считаются и запоминаются: полови�
 """
 
 import json as jsonlib
-from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -260,12 +259,9 @@ def test_put_5xx_maps_to_502_not_500():
     assert r.json() == {"detail": "Keitaro unavailable"}
 
 
-def test_no_api_key_409(tmp_path, monkeypatch):
+def test_no_api_key_409(tmp_path):
+    # Нет файла ключа (env-фолбэка больше нет) → 409 без похода в Keitaro.
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
-    monkeypatch.setattr(
-        "app.keybox.get_settings",
-        lambda: SimpleNamespace(keitaro_api_key=""),
-    )
     try:
         c = TestClient(app)
         r = add_offer(c, LANDINGS_EMPTY["id"])
