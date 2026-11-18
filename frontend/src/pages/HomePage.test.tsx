@@ -79,7 +79,7 @@ describe('HomePage', () => {
     void container;
   });
 
-  it('успешный POST и пустое поле при настроенном ключе ведут на /campaigns/new', async () => {
+  it('успешный POST и пустое поле при настроенном ключе ведут на /campaigns', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -92,7 +92,7 @@ describe('HomePage', () => {
       <MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/campaigns/new" element={<div>campaigns-new-probe</div>} />
+          <Route path="/campaigns" element={<div>campaigns-probe</div>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -101,11 +101,61 @@ describe('HomePage', () => {
       if (el.disabled) throw new Error('not yet enabled');
       return el;
     });
-    // нечисловой путь не нужен: пустое поле + configured → кнопка ведёт на /campaigns/new
+    // пустое поле + configured → кнопка ведёт на /campaigns (легаси-поведение)
     fireEvent.click(btn);
-    expect(await screen.findByText('campaigns-new-probe', {}, { timeout: 2000 })).toBeTruthy();
+    expect(await screen.findByText('campaigns-probe', {}, { timeout: 2000 })).toBeTruthy();
     // POST не уходил: settings GET был единственным запросом
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('ключ настроен: оба входа видны, «Найти кампанию» ведёт на /campaigns, «Создать кампанию» — на /campaigns/new, клик не шлёт POST ключа', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/settings' ? json(200, { configured: true, key_masked: '9' }) : json(200, {}),
+      ),
+    );
+    const tree = render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/campaigns" element={<div>campaigns-probe</div>} />
+          <Route path="/campaigns/new" element={<div>campaigns-new-probe</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByText('Найти кампанию'));
+    expect(await screen.findByText('campaigns-probe', {}, { timeout: 2000 })).toBeTruthy();
+    tree.unmount();
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/campaigns" element={<div>campaigns-probe</div>} />
+          <Route path="/campaigns/new" element={<div>campaigns-new-probe</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByText('Создать кампанию'));
+    expect(await screen.findByText('campaigns-new-probe', {}, { timeout: 2000 })).toBeTruthy();
+    // ни один клик не отправил POST ключа: были только GET /api/settings
+    const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map(([u]) => u);
+    expect(calls).toEqual(['/api/settings', '/api/settings']);
+  });
+
+  it('ключ не настроен: входов «Найти кампанию»/«Создать кампанию» нет', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/settings' ? json(200, { configured: false }) : json(200, {}),
+      ),
+    );
+    renderHome();
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Найти кампанию')).toBeNull();
+    expect(screen.queryByText('Создать кампанию')).toBeNull();
   });
 
   it('502 → «Keitaro недоступен, попробуйте позже.»', async () => {

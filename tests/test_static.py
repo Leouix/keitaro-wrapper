@@ -25,6 +25,7 @@ def client():
 SPA_ROUTES = [
     "/",
     "/campaigns",
+    "/campaigns/new",
     "/fb/campaigns/212502/streams",
     "/fb/campaigns/not-a-number/streams",
 ]
@@ -33,12 +34,20 @@ SPA_ROUTES = [
 @requires_dist
 @pytest.mark.parametrize("path", SPA_ROUTES)
 def test_spa_fallback_serves_dist_index(client, path):
-    # SPA-fallback: все три маршрута отдают один и тот же собранный index.html;
-    # нечисловой campaign_id — ошибка ссылки, а не 404 бэкенда.
+    # SPA-fallback: все маршруты App.tsx отдают один и тот же собранный
+    # index.html; нечисловой campaign_id — ошибка ссылки, а не 404 бэкенда.
     r = client.get(path)
     assert r.status_code == 200, f"{path}: {r.status_code}"
     assert r.headers["content-type"].startswith("text/html")
     assert r.text == INDEX_FILE.read_text(encoding="utf-8")
+
+
+@requires_dist
+def test_campaigns_new_page_contains_app_root(client):
+    # /campaigns/new отдаёт HTML с корневым div приложения, в который
+    # монтируется React, а не JSON-ошибку (регрессия 2026-11-18).
+    body = client.get("/campaigns/new").text
+    assert '<div id="root"></div>' in body
 
 
 @requires_dist
@@ -75,7 +84,7 @@ def test_hashed_asset_content_types(client):
 def test_frontend_not_built_503(client, monkeypatch):
     # Сборки нет — понятная 503 с текстом «frontend не собран», без трейсбека.
     monkeypatch.setattr("app.main.INDEX_FILE", DIST_DIR / "index.html.not-built")
-    for path in ("/", "/campaigns", "/fb/campaigns/212502/streams"):
+    for path in ("/", "/campaigns", "/campaigns/new", "/fb/campaigns/212502/streams"):
         r = client.get(path)
         assert r.status_code == 503, f"{path}: {r.status_code}"
         assert "frontend не собран" in r.json()["detail"]
@@ -105,6 +114,14 @@ def test_campaigns_page_is_static_not_api(client):
     r = client.get("/api/campaigns/", follow_redirects=False)
     assert r.status_code == 307
     assert r.headers["location"] == "http://testserver/api/campaigns"
+
+
+def test_unknown_path_not_spa_fallback(client):
+    # Неизвестный путь не отдаёт index.html и не подменяется ассетом —
+    # честный 404 (SPA внутри сам обрабатывает свой wildcard).
+    r = client.get("/nope", follow_redirects=False)
+    assert r.status_code == 404
+    assert "text/html" not in r.headers.get("content-type", "")
 
 
 def test_docs_still_work(client):

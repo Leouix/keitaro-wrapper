@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { detailToText, jsonHeaders, requestJson, acceptJson } from '../api/client';
 import type { SettingsInfo } from '../api/types';
 import { Button } from '../components/ui/Button';
@@ -46,8 +46,8 @@ export function HomePage() {
     const apiKey = value.trim();
 
     if (!apiKey) {
-      // Ключ уже настроен — сразу к созданию кампании.
-      if (configured) navigate('/campaigns/new');
+      // Ключ уже настроен — к поиску кампаний (как в легаси web/app.js).
+      if (configured) navigate('/campaigns');
       return;
     }
 
@@ -63,8 +63,8 @@ export function HomePage() {
     if (!aliveRef.current) return;
 
     if (status === 200 && body?.configured) {
-      // Успех: сразу к созданию кампании.
-      navigate('/campaigns/new');
+      // Успех: к поиску кампаний (как в легаси web/app.js).
+      navigate('/campaigns');
       return;
     }
 
@@ -89,6 +89,17 @@ export function HomePage() {
           <StatusLine className={s.status}>
             Ключ настроен{mask ? `: ${mask}` : ''}
           </StatusLine>
+        )}
+
+        {configured && (
+          <div className={s.entries}>
+            <Link to="/campaigns" className="link">
+              Найти кампанию
+            </Link>
+            <Link to="/campaigns/new" className="link">
+              Создать кампанию
+            </Link>
+          </div>
         )}
 
         <form onSubmit={onSubmit} noValidate>

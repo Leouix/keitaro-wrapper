@@ -49,6 +49,12 @@ def campaigns_page():
     return _spa_page()
 
 
+@app.get("/campaigns/new", include_in_schema=False)
+def campaigns_new_page():
+    # Прямой заход/обновление страницы создания кампании — тот же SPA-бандл.
+    return _spa_page()
+
+
 @app.get("/fb/campaigns/{campaign_id}/streams", include_in_schema=False)
 def streams_page(campaign_id: str):
     # Нечисловой campaign_id — ошибка ссылки, а не бэкенда: HTML всё равно отдаётся.
