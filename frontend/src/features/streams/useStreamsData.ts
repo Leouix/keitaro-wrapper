@@ -9,6 +9,15 @@ export type PageError = {
   kind: 'home' | 'campaigns' | 'retry';
 } | null;
 
+/** Итог загрузки: ok + HTTP-статус и body последнего ответа на /streams
+ *  (статус нужен странице, чтобы показать честный текст ошибки —
+ *  как pageError маппит 0/404/502/409). */
+export type LoadOutcome = { ok: boolean; status: number; body: unknown };
+
+/** Устаревший ответ (страницу уже перезагрузил другой запрос): статус -1,
+ *  UI по нему не трогаем — никакого «Обновлено»/ошибки не показываем. */
+const STALE: LoadOutcome = { ok: false, status: -1, body: null };
+
 export interface StreamsData {
   loading: boolean;
   /** Потоков нет вообще. */
@@ -28,7 +37,7 @@ export interface StreamsData {
   archive: ArchivedEntry[];
   pending: PendingRow[];
   campaignName: string | null;
-  load: (opts?: { refresh?: boolean }) => Promise<boolean>;
+  load: (opts?: { refresh?: boolean }) => Promise<LoadOutcome>;
   setStreams: (update: (prev: Stream[]) => Stream[]) => void;
   setArchive: (update: (prev: ArchivedEntry[]) => ArchivedEntry[]) => void;
   setPending: (update: (prev: PendingRow[]) => PendingRow[]) => void;
@@ -57,7 +66,7 @@ export function useStreamsData(campaignId: string): StreamsData {
   const seqRef = useRef(0);
 
   const load = useCallback(
-    async (opts: { refresh?: boolean } = {}): Promise<boolean> => {
+    async (opts: { refresh?: boolean } = {}): Promise<LoadOutcome> => {
       const refresh = opts.refresh === true;
       const mySeq = ++seqRef.current;
       if (!refresh) {
@@ -100,7 +109,7 @@ export function useStreamsData(campaignId: string): StreamsData {
       }
 
       // Ответ на устаревшую загрузку (повторная «Повторить» пришла раньше) — молча бросаем.
-      if (mySeq !== seqRef.current) return false;
+      if (mySeq !== seqRef.current) return STALE;
 
       // body.name || body.campaign?.name — защитный фолбэк на campaign.name оставлен для совместимости со старым бэкендом, актуальный бэкенд его не использует.
       const campaignBody = campaignRes.ok ? campaignRes.body : null;
@@ -110,7 +119,7 @@ export function useStreamsData(campaignId: string): StreamsData {
 
       const { status, body } = streamsRes;
       if (status !== 200 || !Array.isArray(body)) {
-        if (refresh) return false;
+        if (refresh) return { ok: false, status, body };
         if (status === 409) {
           setPageError({ text: 'Сначала укажите API key.', kind: 'home' });
         } else if (status === 404) {
@@ -126,7 +135,7 @@ export function useStreamsData(campaignId: string): StreamsData {
           });
         }
         setLoading(false);
-        return false;
+        return { ok: false, status, body };
       }
 
       const streamsData = body;
@@ -163,7 +172,7 @@ export function useStreamsData(campaignId: string): StreamsData {
           return [id, r.ok ? r.body : null, r.ok ? 0 : r.status] as const;
         }),
       );
-      if (mySeq !== seqRef.current) return false;
+      if (mySeq !== seqRef.current) return STALE;
 
       setOffersMap(new Map(results.map(([id, offer]) => [id, offer])));
       setOfferErrors(new Map(results.map(([id, , errStatus]) => [id, errStatus])));
@@ -171,12 +180,10 @@ export function useStreamsData(campaignId: string): StreamsData {
       setServerDown(offersServerDown);
       setLoading(false);
 
-      if (!streamsData.length) {
-        // Потоков нет вообще — прежний empty-state.
-        setEmpty(true);
-        return true;
-      }
-      return true;
+      // Потоков нет — прежний empty-state; в refresh-ветке это также снимает
+      // empty, когда в Кейтаро появились первые потоки (кнопка «Обновить»).
+      setEmpty(streamsData.length === 0);
+      return { ok: true, status, body };
     },
     [campaignId],
   );

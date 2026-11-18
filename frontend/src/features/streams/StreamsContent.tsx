@@ -16,7 +16,7 @@ import {
   sortedStreams,
   streamName,
 } from '../../lib/pending';
-import { applyErrorText, pendingChangeErrorText } from './errorTexts';
+import { applyErrorText, pendingChangeErrorText, refreshErrorText } from './errorTexts';
 import { SendBar } from './SendBar';
 import { StreamCard } from './StreamCard';
 import { useStreamsData } from './useStreamsData';
@@ -54,10 +54,13 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
   const [busyStreams, setBusyStreams] = useState<Set<number>>(new Set());
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState<{ text: string; error: boolean } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<{ text: string; error: boolean } | null>(null);
   const [warningOpen, setWarningOpen] = useState(false);
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
 
   const sendBtnRef = useRef<HTMLButtonElement>(null);
+  const refreshBtnRef = useRef<HTMLButtonElement>(null);
   const warningRef = useRef<HTMLDivElement>(null);
   const warningCancelRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -67,20 +70,50 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
   /* --- Загрузка --- */
 
   const reload = useCallback(async () => {
-    const ok = await load();
-    if (ok) setStreamErrors(new Map());
+    const out = await load();
+    if (out.ok) setStreamErrors(new Map());
   }, [load]);
 
   useEffect(() => {
     let disposed = false;
     void (async () => {
-      const ok = await load();
-      if (!disposed && ok) setStreamErrors(new Map());
+      const out = await load();
+      if (!disposed && out.ok) setStreamErrors(new Map());
     })();
     return () => {
       disposed = true;
     };
   }, [load]);
+
+  /* --- Обновление из Кейтаро --- */
+
+  /** «Обновить из Кейтаро»: повторный GET живых данных без скелета и без
+   *  перезагрузки страницы. Скелет и pageError не трогаются, существующие
+   *  строки остаются на экране; pending берётся из БД и переживает refresh. */
+  const runRefresh = useCallback(async () => {
+    if (sending || refreshing) return;
+    setRefreshing(true);
+    setRefreshStatus(null);
+    const out = await load({ refresh: true });
+    setRefreshing(false);
+    // Устаревший ответ (страницу уже перезагрузил другой запрос) — статус не трогаем.
+    if (out.status < 0) return;
+    if (out.ok) {
+      // Данные перечитаны — старые ошибки операций больше не актуальны.
+      setStreamErrors(new Map());
+      setRefreshStatus({
+        text: `Обновлено в ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`,
+        error: false,
+      });
+    } else {
+      setRefreshStatus({ text: refreshErrorText(out.status, out.body), error: true });
+    }
+    // Chromium сбрасывает фокус с кнопки, пока она disabled; после включения
+    // возвращаем его, если пользователь сам не увёл фокус во время запроса.
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) refreshBtnRef.current?.focus();
+    });
+  }, [load, refreshing, sending]);
 
   // Заголовок и document.title: до ответа — ID, после — название кампании.
   const title = `Потоки кампании ${campaignName || campaignId}`;
@@ -323,7 +356,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
   const hideSendWarning = useCallback(() => setWarningOpen(false), []);
 
   function onSendClick() {
-    if (sending || pending.length === 0) return;
+    if (sending || refreshing || pending.length === 0) return;
     // Повторный клик всегда сбрасывает прошлое предупреждение.
     setWarningOpen(false);
     if (emptyTargets.length) {
@@ -343,6 +376,8 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       (warningRef.current?.contains(document.activeElement) ?? false);
     setSending(true);
     setSendStatus(null);
+    // Прошлый «Обновлено в …» не должен висеть над уже другими данными.
+    setRefreshStatus(null);
 
     // Потоки с ожидающими изменениями, в порядке списка; поток вне списка
     // (редкий случай) — в конец, apply проверяет кампанию по самому потоку.
@@ -496,6 +531,23 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
             meta={<p className="counter">ID кампании: {campaignId}</p>}
           />
           <EmptyState title="В этой кампании нет потоков." />
+          {/* Обновление и из empty-state: поток, добавленный в Кейтаро,
+              появляется без перезагрузки страницы. */}
+          <div className={s.errorActions}>
+            <Button
+              variant="secondary"
+              disabled={sending || refreshing}
+              onClick={() => void runRefresh()}
+              buttonRef={refreshBtnRef}
+            >
+              {refreshing ? 'Обновляем…' : 'Обновить из Кейтаро'}
+            </Button>
+            {refreshStatus && (
+              <StatusLine error={refreshStatus.error} role="status">
+                {refreshStatus.text}
+              </StatusLine>
+            )}
+          </div>
         </section>
       </div>
     );
@@ -511,14 +563,17 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
           meta={<p className="counter">ID кампании: {campaignId}</p>}
         />
 
-        <div ref={rootRef} aria-busy={sending || undefined}>
+        <div ref={rootRef} aria-busy={(sending || refreshing) || undefined}>
           <SendBar
             sending={sending}
+            refreshing={refreshing}
             pendingCount={pending.length}
             adds={draftAdds}
             removes={draftRemoves}
             onSend={onSendClick}
+            onRefresh={() => void runRefresh()}
             buttonRef={sendBtnRef}
+            refreshButtonRef={refreshBtnRef}
           />
 
           {/* Предупреждение перед отправкой потока без оферов: инлайн-блок,
@@ -550,7 +605,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
                 </Button>
                 <Button
                   variant="danger"
-                  disabled={sending}
+                  disabled={sending || refreshing}
                   onClick={() => {
                     // После «Всё равно отправить» предупреждение больше не показываем.
                     hideSendWarning();
@@ -572,6 +627,14 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
               lineRef={statusRef}
             >
               {sendStatus.text}
+            </StatusLine>
+          )}
+
+          {/* Статус кнопки «Обновить из Кейтаро»: успех или честная ошибка
+              по HTTP-статусу; строки списка при этом не заменяются. */}
+          {refreshStatus && (
+            <StatusLine error={refreshStatus.error} role="status" className={s.sendStatus}>
+              {refreshStatus.text}
             </StatusLine>
           )}
 

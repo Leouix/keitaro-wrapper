@@ -16,3 +16,23 @@
   font-size: var(--text-sm);
   font-weight: 500;
 }
+
+/* Кнопка обновления уходит к правому краю панели; на узком экране
+   переносится на свою строку, как остальные элементы панели. */
+.refresh {
+  margin-bottom: 15px;
+}
+
+.fetchKeitaro {
+  background: url("../../../assets/images/fetch.png");
+  width: 15px;
+  height: 15px;
+  display: block;
+  background-size: contain;
+  background-repeat: no-repeat;
+  margin-left: 5px;
+}
+
+.sectionTop button {
+  min-width: 210px;
+}

@@ -245,3 +245,170 @@ describe('StreamsContent — «Добавить» офер (#4518)', () => {
     expect(screen.queryByText('не удалось загрузить офер')).toBeNull();
   });
 });
+
+describe('StreamsContent — «Обновить из Кейтаро»', () => {
+  /** Черновик в потоке 1313478: офер 18813 помечен к добавлению, живёт в БД. */
+  const draftPending = [{ stream_id: 1313478, offer_id: 18813, action: 'add', created_at: null }];
+
+  function makeRefreshFetch({
+    streamsImpl = () => Promise.resolve(json(200, streamsBody)),
+    offerById = {
+      4440: { id: 4440, name: 'Офер 4440', state: 'active' },
+      18813: { id: 18813, name: 'Офер 18813', state: 'active' },
+    },
+    pending = [],
+    applyImpl = () => Promise.resolve(json(200, { applied: true, added: [], removed: [] })),
+  }: {
+    streamsImpl?: () => Promise<unknown>;
+    offerById?: Record<number, unknown>;
+    pending?: unknown[];
+    applyImpl?: () => Promise<unknown>;
+  } = {}) {
+    return vi.fn(async (url: string, opts?: RequestInit) => {
+      if (url.endsWith('/streams')) return streamsImpl();
+      if (url.endsWith('/streams/archive')) return json(200, { archived: [] });
+      if (/\/pending$/.test(url) && opts?.method === 'PUT') return json(200, { pending });
+      if (url.endsWith('/streams/pending')) return json(200, { pending });
+      if (/\/apply$/.test(url)) return applyImpl();
+      if (/\/api\/campaigns\/\d+$/.test(url)) return json(200, { name: 'Кампа 1' });
+      if (url.startsWith('/api/offers/')) {
+        const m = url.match(/^\/api\/offers\/(\d+)$/);
+        const body = m ? offerById[Number(m[1])] : undefined;
+        return body === undefined ? json(404, null) : json(200, body);
+      }
+      return json(404, null);
+    });
+  }
+
+  const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
+
+  it('успех: второй GET /streams без размонтирования и скелета, черновик 18813 и счётчик переживают refresh, фокус остаётся на кнопке', async () => {
+    let release!: () => void;
+    let blockRefresh = false;
+    const streamsImpl = vi.fn(() => {
+      if (!blockRefresh) return Promise.resolve(json(200, streamsBody));
+      return new Promise((res) => {
+        release = () => res(json(200, streamsBody));
+      });
+    });
+    vi.stubGlobal('fetch', makeRefreshFetch({ streamsImpl, pending: draftPending }));
+    const { container } = renderStreams();
+
+    // Страница загрузилась: живой офер и жёлтая строка черновика на месте.
+    expect(await screen.findByText('Офер 4440')).toBeTruthy();
+    expect(screen.getByText('черновик')).toBeTruthy();
+    expect(screen.getByText('Изменений: +1')).toBeTruthy();
+
+    blockRefresh = true;
+    const btn = screen.getByRole('button', { name: 'Обновить из Кейтаро' });
+    btn.focus();
+    fireEvent.click(btn);
+
+    // Во время запроса: старые строки видны, скелета нет, обе кнопки disabled.
+    expect(button('Обновляем…').disabled).toBe(true);
+    expect(button('Отправить в Кейтаро').disabled).toBe(true);
+    expect(screen.getByText('Офер 4440')).toBeTruthy();
+    expect(screen.queryByText('Загружаем потоки…')).toBeNull();
+    expect(container.querySelector('[aria-busy="true"]')).toBeTruthy();
+
+    release();
+    expect(await screen.findByText(/Обновлено в /)).toBeTruthy();
+
+    // Pending пережил refresh: жёлтая строка и счётчик не изменились.
+    expect(screen.getByText('черновик')).toBeTruthy();
+    expect(screen.getByText('Изменений: +1')).toBeTruthy();
+    // Кнопка снова активна, фокус на ней (не размонтировалась).
+    const btnAfter = button('Обновить из Кейтаро');
+    expect(btnAfter.disabled).toBe(false);
+    expect(document.activeElement).toBe(btnAfter);
+    // Второй GET /streams случился.
+    expect(streamsImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('502: error-статус «Keitaro недоступен.», строки на месте, pageError не появился, кнопка снова активна', async () => {
+    let fail = false;
+    const streamsImpl = vi.fn(() =>
+      fail ? Promise.resolve(json(502, null)) : Promise.resolve(json(200, streamsBody)),
+    );
+    vi.stubGlobal('fetch', makeRefreshFetch({ streamsImpl, pending: draftPending }));
+    renderStreams();
+
+    expect(await screen.findByText('Офер 4440')).toBeTruthy();
+
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить из Кейтаро' }));
+
+    expect(await screen.findByText('Keitaro недоступен.')).toBeTruthy();
+    // Страница не заменена на pageError, строки и черновик на месте.
+    expect(screen.queryByText('Кампания не найдена.')).toBeNull();
+    expect(screen.getByText('Офер 4440')).toBeTruthy();
+    expect(screen.getByText('черновик')).toBeTruthy();
+    expect(button('Обновить из Кейтаро').disabled).toBe(false);
+  });
+
+  it('status 0 (сеть): «Сеть недоступна.», строки на месте, pageError не появился', async () => {
+    let fail = false;
+    const streamsImpl = vi.fn(() =>
+      fail
+        ? Promise.reject(new TypeError('Failed to fetch'))
+        : Promise.resolve(json(200, streamsBody)),
+    );
+    vi.stubGlobal('fetch', makeRefreshFetch({ streamsImpl, pending: draftPending }));
+    renderStreams();
+
+    expect(await screen.findByText('Офер 4440')).toBeTruthy();
+
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить из Кейтаро' }));
+
+    expect(await screen.findByText('Сеть недоступна.')).toBeTruthy();
+    expect(screen.getByText('Офер 4440')).toBeTruthy();
+    expect(screen.getByText('черновик')).toBeTruthy();
+    expect(
+      screen.queryByText('Сервер не отвечает. Проверьте, что uvicorn запущен, и обновите страницу.'),
+    ).toBeNull();
+  });
+
+  it('пока идёт отправка (apply), «Обновить из Кейтаро» disabled; после завершения снова активна', async () => {
+    let release!: () => void;
+    const applyResult = json(200, { applied: true, added: [18813], removed: [] });
+    const applyImpl = () =>
+      new Promise((res) => {
+        release = () => res(applyResult);
+      });
+    vi.stubGlobal('fetch', makeRefreshFetch({ pending: draftPending, applyImpl }));
+    renderStreams();
+
+    expect(await screen.findByText('Офер 4440')).toBeTruthy();
+    expect(button('Обновить из Кейтаро').disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отправить в Кейтаро' }));
+
+    // Во время отправки обновление недоступно (взаимное исключение).
+    expect(button('Обновить из Кейтаро').disabled).toBe(true);
+    expect(button('Отправить в Кейтаро').disabled).toBe(true);
+
+    release();
+    expect(await screen.findByText(/Потоков обновлено: 1/)).toBeTruthy();
+    expect(button('Обновить из Кейтаро').disabled).toBe(false);
+  });
+
+  it('empty-state: кнопка «Обновить из Кейтаро» подтягивает появившиеся в Кейтаро потоки без F5', async () => {
+    let hasStreams = false;
+    vi.stubGlobal(
+      'fetch',
+      makeRefreshFetch({
+        streamsImpl: () => Promise.resolve(json(200, hasStreams ? streamsBody : [])),
+      }),
+    );
+    renderStreams();
+
+    expect(await screen.findByText('В этой кампании нет потоков.')).toBeTruthy();
+
+    hasStreams = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить из Кейтаро' }));
+
+    expect(await screen.findByText('Офер 4440', {}, { timeout: 3000 })).toBeTruthy();
+    expect(screen.queryByText('В этой кампании нет потоков.')).toBeNull();
+  });
+});

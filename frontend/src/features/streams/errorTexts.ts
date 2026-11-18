@@ -30,4 +30,13 @@ export function pendingChangeErrorText(status: number, body: unknown, fallback: 
   return detailToText(detail, `${fallback} (код ${status}).`);
 }
 
+/** Тексты ошибок кнопки «Обновить из Кейтаро» (повторный GET /streams). */
+export function refreshErrorText(status: number, body: unknown): string {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (status === 0) return 'Сеть недоступна.';
+  if (status === 502) return 'Keitaro недоступен.';
+  // 403 — честный detail от бэка (права ключа), остальные — с кодом.
+  return detailToText(detail, `Не удалось обновить (код ${status}).`);
+}
+
 export type RequestBody = RequestResult<unknown>['body'];
