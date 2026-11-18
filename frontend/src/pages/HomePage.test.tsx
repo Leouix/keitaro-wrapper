@@ -108,41 +108,19 @@ describe('HomePage', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('ключ настроен: оба входа видны, «Найти кампанию» ведёт на /campaigns, «Создать кампанию» — на /campaigns/new, клик не шлёт POST ключа', async () => {
+  it('ключ настроен: на главной только поле ключа и «Далее» — входов в разделы нет', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>
         url === '/api/settings' ? json(200, { configured: true, key_masked: '9' }) : json(200, {}),
       ),
     );
-    const tree = render(
-      <MemoryRouter initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/campaigns" element={<div>campaigns-probe</div>} />
-          <Route path="/campaigns/new" element={<div>campaigns-new-probe</div>} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(await screen.findByText('Найти кампанию'));
-    expect(await screen.findByText('campaigns-probe', {}, { timeout: 2000 })).toBeTruthy();
-    tree.unmount();
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/campaigns" element={<div>campaigns-probe</div>} />
-          <Route path="/campaigns/new" element={<div>campaigns-new-probe</div>} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    fireEvent.click(await screen.findByText('Создать кампанию'));
-    expect(await screen.findByText('campaigns-new-probe', {}, { timeout: 2000 })).toBeTruthy();
-    // ни один клик не отправил POST ключа: были только GET /api/settings
-    const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map(([u]) => u);
-    expect(calls).toEqual(['/api/settings', '/api/settings']);
+    renderHome();
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/Ключ настроен/)).toBeTruthy();
+    expect(screen.queryByText('Найти кампанию')).toBeNull();
+    expect(screen.queryByText('Создать кампанию')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('ключ не настроен: входов «Найти кампанию»/«Создать кампанию» нет', async () => {

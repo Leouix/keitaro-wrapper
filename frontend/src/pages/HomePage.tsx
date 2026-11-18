@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { detailToText, jsonHeaders, requestJson, acceptJson } from '../api/client';
 import type { SettingsInfo } from '../api/types';
 import { Button } from '../components/ui/Button';
@@ -89,17 +89,6 @@ export function HomePage() {
           <StatusLine className={s.status}>
             Ключ настроен{mask ? `: ${mask}` : ''}
           </StatusLine>
-        )}
-
-        {configured && (
-          <div className={s.entries}>
-            <Link to="/campaigns" className="link">
-              Найти кампанию
-            </Link>
-            <Link to="/campaigns/new" className="link">
-              Создать кампанию
-            </Link>
-          </div>
         )}
 
         <form onSubmit={onSubmit} noValidate>
