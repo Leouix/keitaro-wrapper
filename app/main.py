@@ -62,6 +62,25 @@ def streams_page(campaign_id: str):
     return _spa_page()
 
 
+@app.get("/favicon.svg", include_in_schema=False)
+def favicon_svg():
+    return _favicon("favicon.svg", "image/svg+xml")
+
+
+@app.get("/favicon-32.png", include_in_schema=False)
+def favicon_png():
+    return _favicon("favicon-32.png", "image/png")
+
+
+def _favicon(name: str, media_type: str) -> FileResponse:
+    # Иконки вкладки лежат рядом с index.html в web/dist (копируются из
+    # frontend/public). Кэш короткий: имя не хэшированное, иконку могут менять.
+    path = DIST_DIR / name
+    if not path.is_file():
+        raise HTTPException(404, f"{name} is missing (rebuild the frontend)")
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "public, max-age=3600"})
+
+
 class HashedAssets(StaticFiles):
     """Раздача web/dist/assets: имена файлов содержат хэш сборки.
 

@@ -1,18 +1,21 @@
 # Keitaro Wrapper API
 
-Обёртка над Admin API Keitaro (https://tlgk.host): аутентификация по `Api-Key`,
-кэш кампаний в SQLite, устойчивость к недоступности Keitaro.
-
+Обёртка над Admin API Keitaro (https://tlgk.host): аутентификация по `Api-Key`
 Документация апи: https://tlgk.host/admin/
 
 ## Локальный запуск
 
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+### Сервер:
+```
+python3 -m venv .venv && source .venv/bin/activate \
+pip install -r requirements.txt \
 uvicorn app.main:app --port 8011
+```
 
+### Фронтенд:
+```
 cd frontend && npm ci && npm run dev
-
+```
 
 ### Порты
 
