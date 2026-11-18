@@ -82,8 +82,6 @@ section.hasDraft {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  /* Выравниваем кнопку по строке ввода: label 20px + отступ 6px → сдвиг 12px. */
-  margin-top: 12px;
 }
 
 @media (max-width: 560px) {
