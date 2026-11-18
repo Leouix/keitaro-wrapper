@@ -204,15 +204,16 @@ def test_apply_add_and_remove_one_put_exact_shares():
     assert body["noop"] is False
     assert body["added"] == [25328]
     assert body["removed"] == [25329]
-    # Ровно один PUT: 4 живых - 1 remove + 1 add = 4 офера по 25.
+    # Ровно один PUT: оставшиеся после remove веса масштабируются к 100
+    # (25/25/25 -> 34/33/33), добавленный получает средний вес живых (33).
     assert len(h.put_bodies) == 1
     assert h.put_bodies[0] == {
         "campaign_id": CAMPAIGN_ID,
         "offers": [
-            {"offer_id": 25327, "share": 25, "state": "active"},
-            {"offer_id": 25330, "share": 25, "state": "active"},
-            {"offer_id": 25331, "share": 25, "state": "active"},
-            {"offer_id": 25328, "share": 25, "state": "active"},
+            {"offer_id": 25327, "share": 34, "state": "active"},
+            {"offer_id": 25330, "share": 33, "state": "active"},
+            {"offer_id": 25331, "share": 33, "state": "active"},
+            {"offer_id": 25328, "share": 33, "state": "active"},
         ],
     }
     assert body["stream"]["offers"] == h.put_bodies[0]["offers"]
@@ -228,14 +229,15 @@ def test_apply_add_and_remove_one_put_exact_shares():
     live_row = read_state(Session, STREAM_ID, 25328)
     assert live_row is not None
     assert live_row["archived_at"] is None
-    assert live_row["share"] == 25
+    assert live_row["share"] == 33  # средний вес живых
     assert live_row["state"] == "active"
 
     assert read_pending(Session) == []
 
 
-def test_apply_three_live_plus_one_add_shares_25_each():
-    # 3 живых + 1 add = 4 офера -> 25/25/25/25 (порядок add в конце).
+def test_apply_three_live_plus_one_add_keeps_weights():
+    # Живые веса Keitaro (33/33/33) не перетираются, добавленный получает
+    # средний вес живых (33) и встаёт в конец.
     h = PendingHandler(LANDINGS_3)
     c, Session = make_client(h)
     put_pending(c, {"add": [25328], "remove": []})
@@ -243,10 +245,10 @@ def test_apply_three_live_plus_one_add_shares_25_each():
     r = apply_pending(c)
     assert r.status_code == 200
     assert h.put_bodies[0]["offers"] == [
-        {"offer_id": 25327, "share": 25, "state": "active"},
-        {"offer_id": 25329, "share": 25, "state": "paused"},
-        {"offer_id": 25330, "share": 25, "state": "active"},
-        {"offer_id": 25328, "share": 25, "state": "active"},
+        {"offer_id": 25327, "share": 33, "state": "active"},
+        {"offer_id": 25329, "share": 33, "state": "paused"},
+        {"offer_id": 25330, "share": 33, "state": "active"},
+        {"offer_id": 25328, "share": 33, "state": "active"},
     ]
     assert read_pending(Session) == []
 

@@ -49,7 +49,8 @@ def test_index_html_no_store(client):
 
 @requires_dist
 def test_hashed_asset_served_from_dist(client):
-    assets = sorted((DIST_DIR / "assets").glob("*"))
+    # Бандл — только текст: рядом с js/css в сборке лежат картинки (png).
+    assets = sorted((DIST_DIR / "assets").glob("*.js"))
     assert assets, "в web/dist/assets нет ассетов — сборка пуста?"
     target = assets[0]
     r = client.get(f"/assets/{target.name}")

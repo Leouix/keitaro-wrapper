@@ -3,11 +3,13 @@
 Контракт согласован с брифом:
 - campaign_id клиенту не доверяем — берём его из самого потока;
 - PUT частичный, но share Keitaro сам не пересчитывает, поэтому присылаем
-  явные целые для ВСЕХ оферов потока: 100 // n поровну, остаток добирается
-  первым оферам (3 офера -> 34/33/33);
-- дубликат offer_id отсекаем до PUT — сервер Keitaro дубликаты схлопывает;
-- удаление: сначала PUT в Keitaro с пересчитанными долями, только после
+  явные веса для ВСЕХ оферов потока: живой офер сохраняет свой share из
+  Keitaro (ручные веса не перетираем), новый получает средний вес живых —
+  при равных весах это ровно его доля (4×25 + новый -> по 25, всего 125);
+- удаление: сначала PUT в Keitaro с весами, масштабированными к 100
+  с сохранением пропорций (33/33/33 -> 50/50), только после
   успеха офер архивируется в stream_offer_state (archive_reason="user");
+- дубликат offer_id отсекаем до PUT — сервер Keitaro дубликаты схлопывает;
   ошибка записи в БД после успешного PUT не ломает ответ — логируем и
   всё равно отдаём 200;
 - запрет «нельзя удалить единственный офер» снят (2026-11-17, проверено
@@ -52,24 +54,73 @@ class OfferAddBody(BaseModel):
     offer_id: int = Field(gt=0)
 
 
-def reshare(offers: list[dict]) -> list[dict]:
-    """Равные доли для всех оферов потока.
+def _share_of(entry: dict) -> int | None:
+    """Вес офера из живого ответа Keitaro (None, если Keitaro его не прислал)."""
+    value = entry.get("share")
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
-    Keitaro share сам не пересчитывает; UI раскладывает поровну с
-    доборкой остатка первым оферам (3 офера -> 34/33/33), повторяем это.
-    Пустой список -> пустой payload.
+
+def _scaled_to_100(values: list[int]) -> list[int]:
+    """Масштабировать веса к 100, сохранив пропорции.
+
+    Остаток от округления добирают строки с самой большой дробной частью,
+    поэтому равные веса дают прежнее «34/33/33», а 40/30/20 -> 44/33/23.
     """
-    n = len(offers)
-    if n == 0:
+    total = sum(values)
+    if total <= 0:
+        base, rest = divmod(100, len(values))
+        return [base + (1 if i < rest else 0) for i in range(len(values))]
+    exact = [v * 100 / total for v in values]
+    out = [int(x) for x in exact]
+    leftover = 100 - sum(out)
+    order = sorted(range(len(exact)), key=lambda i: exact[i] - out[i], reverse=True)
+    for i in order[:leftover]:
+        out[i] += 1
+    return out
+
+
+def reshare(offers: list[dict], *, rescale: bool = False) -> list[dict]:
+    """Доли для PUT в Keitaro.
+
+    Ручные веса, выставленные в Keitaro, не перетираются: офер, который
+    уже живой в потоке, сохраняет свой share. Новый офер (share не пришёл
+    из Keitaro) получает средний вес живых — при равных весах это ровно
+    его доля в новом наборе (4×25 + новый -> новый 25, всего 125 = по 20%).
+    rescale=True (удаление): веса живых масштабируются к 100 с сохранением
+    пропорций, как это делает интерфейс Keitaro. Пустой список -> пустой
+    payload.
+    """
+    if not offers:
         return []
-    base, rest = divmod(100, n)
+    known = [o for o in offers if _share_of(o) is not None]
+    unknown = [o for o in offers if _share_of(o) is None]
+    shares: dict[int, int] = {}
+    if known:
+        values = [_share_of(o) for o in known]
+        if rescale:
+            values = _scaled_to_100(values)
+        for o, value in zip(known, values):
+            shares[o["offer_id"]] = value
+    if unknown:
+        if shares:
+            default = round(sum(shares.values()) / len(shares))
+        else:
+            base, rest = divmod(100, len(offers))
+            default = None
+        for i, o in enumerate(unknown):
+            if default is not None:
+                shares[o["offer_id"]] = default
+            else:
+                shares[o["offer_id"]] = base + (1 if i < rest else 0)
     return [
         {
             "offer_id": o["offer_id"],
-            "share": base + (1 if i < rest else 0),
+            "share": shares[o["offer_id"]],
             "state": o.get("state") or "active",
         }
-        for i, o in enumerate(offers)
+        for o in offers
     ]
 
 
@@ -207,7 +258,7 @@ async def add_offer_to_stream(
             )
         return {"added": False, "already": True, "stream": stream}
 
-    offers.append({"offer_id": body.offer_id, "share": 0, "state": "active"})
+    offers.append({"offer_id": body.offer_id, "state": "active"})
     payload = reshare(offers)
     try:
         updated = await keitaro.update_stream_offers(
@@ -272,7 +323,7 @@ async def remove_offer_from_stream(
 
     # Удаление последнего офера разрешено: Keitaro принимает offers: []
     # (проверено живым PUT на потоке 1313077, 2026-11-17).
-    payload = reshare([o for o in offers if o.get("offer_id") != offer_id])
+    payload = reshare([o for o in offers if o.get("offer_id") != offer_id], rescale=True)
     try:
         updated = await keitaro.update_stream_offers(
             stream_id, stream.get("campaign_id"), payload
@@ -528,7 +579,9 @@ async def apply_stream_pending(
 
     final = [live_by_id[oid] for oid in final_ids if oid in live_by_id]
     final += [{"offer_id": oid, "state": "active"} for oid in final_ids if oid not in live_by_id]
-    payload = reshare(final)
+    payload = reshare(
+        final, rescale=any(oid in live_by_id for oid in removes)
+    )
     try:
         updated = await keitaro.update_stream_offers(
             stream_id, stream.get("campaign_id"), payload

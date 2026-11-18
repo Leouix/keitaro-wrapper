@@ -214,8 +214,9 @@ def test_delete_put_body_only_offers_and_campaign():
     assert set(h.put_bodies[0].keys()) == {"campaign_id", "offers"}
     for o in h.put_bodies[0]["offers"]:
         assert set(o.keys()) == {"offer_id", "share", "state"}
-    # reshare сам по себе согласован: 2 офера -> 50/50.
-    assert reshare(LANDINGS_3["offers"][:2]) == [
+    # Удаление масштабирует оставшиеся веса к 100 с сохранением пропорций:
+    # 2 офера 33/33 -> 50/50.
+    assert reshare(LANDINGS_3["offers"][:2], rescale=True) == [
         {"offer_id": 25327, "share": 50, "state": "active"},
         {"offer_id": 25329, "share": 50, "state": "paused"},
     ]

@@ -14,30 +14,35 @@ export interface StreamRow {
 }
 
 /**
- * Доли при наличии ожидающих изменений: base = floor(100/n),
- * остаток добирается первым строкам итогового набора (3 офера → 34/33/33).
- * total <= 0 → пересчитывать нечего.
+ * Доли для оферов, которых в Keitaro ещё нет (черновик/возврат из архива).
+ * При живых оферах — средний вес живых: при равных весах это ровно доля
+ * нового офера в наборе (4×25 + новый → 25). Пустой поток — 100 на всех
+ * поровну. Тот же расчёт делает бэкенд при отправке в Keitaro.
  */
-export function recalculateShares(total: number): number[] | null {
-  if (total <= 0) return null;
-  const base = Math.floor(100 / total);
-  const rem = 100 % total;
-  return Array.from({ length: total }, (_, i) => (i < rem ? base + 1 : base));
+export function addedShares(liveShares: number[], count: number): number[] {
+  if (count <= 0) return [];
+  if (liveShares.length > 0) {
+    const mean = Math.round(liveShares.reduce((a, b) => a + b, 0) / liveShares.length);
+    return Array.from({ length: count }, () => mean);
+  }
+  const base = Math.floor(100 / count);
+  const rem = 100 % count;
+  return Array.from({ length: count }, (_, i) => (i < rem ? base + 1 : base));
 }
 
 /**
  * Строки таблицы одного потока.
- * Итоговый набор (для долей) = живые оферы без pending-remove плюс
- * pending-add в порядке добавления («вернётся в поток» и черновик).
- * Позиции уже существующих строк фиксированы: строка с pending-remove
- * остаётся на своём месте среди живых; офер, возвращаемый из архива
- * (pending add + запись в архиве), рисуется в СВОЕЙ архивной позиции —
- * наверх не переезжает и при отмене не прыгает обратно. Наверх уходят
- * только новые черновики (pending add без записи в архиве): после живых
- * строк, перед архивом, в порядке добавления. Архивные строки идут
- * в порядке архива, в пересчёте долей не участвуют и не дублируют
- * pending-add. Пока у потока есть ожидающие изменения — доли пересчитаны
- * локально; без них каждая живая строка показывает свою долю с сервера.
+ * Доля живой строки — всегда та, что стоит в Keitaro (после «Обновить из
+ * Кейтаро» она меняется молча, даже если в потоке есть черновик); ручные
+ * веса, выставленные в Keitaro, мы не пересчитываем на своей стороне.
+ * Строка с pending-remove остаётся на своём месте с прочерком.
+ * Офер, которого в Keitaro ещё нет (новый черновик или возврат из архива),
+ * получает средний вес живых — ровно ту долю, которую ему даст отправка.
+ * Возвращаемый из архива офер рисуется в СВОЕЙ архивной позиции — наверх
+ * не переезжает и при отмене не прыгает обратно. Наверх уходят только
+ * новые черновики (pending add без записи в архиве): после живых строк,
+ * перед архивом, в порядке добавления. Архивные строки идут в порядке
+ * архива и доли не показывают.
  */
 export function computeStreamRows(
   stream: Stream,
@@ -56,18 +61,19 @@ export function computeStreamRows(
   // Новые черновики — pending add без записи в архиве.
   const drafts = adds.filter((p) => !restored.has(p.offer_id));
 
-  const liveCount = entries.filter((e) => !removes.has(e.offer_id)).length;
-  const total = liveCount + adds.length;
-  const recalculated = streamPending.length > 0 ? recalculateShares(total) : null;
+  // Веса живых оферов, которые остаются в потоке: только они участвуют
+  // в расчёте доли для добавляемых строк.
+  const liveShares = entries
+    .filter((e) => !removes.has(e.offer_id))
+    .map((e) => e.share)
+    .filter((s): s is number => typeof s === 'number');
 
-  // Доли итогового набора «живые → добавляемые»: раздаём заранее,
-  // чтобы возвращаемая строка получила свою цифру на архивной позиции.
+  // Доли добавляемых: свои веса идут в порядке добавления.
+  const addShareValues = addedShares(liveShares, adds.length);
   const addShares = new Map<number, number | null>();
-  let fi = liveCount;
-  for (const p of adds) addShares.set(p.offer_id, recalculated ? (recalculated[fi++] ?? null) : null);
+  adds.forEach((p, i) => addShares.set(p.offer_id, addShareValues[i] ?? null));
 
   const rows: StreamRow[] = [];
-  let idx = 0;
 
   for (const entry of entries) {
     const isPendingRemove = removes.has(entry.offer_id);
@@ -75,13 +81,7 @@ export function computeStreamRows(
       stream,
       entry,
       offer: offersMap.get(entry.offer_id) ?? null,
-      share: isPendingRemove
-        ? null
-        : recalculated
-          ? (recalculated[idx++] ?? null)
-          : entry.share == null
-            ? null
-            : entry.share,
+      share: isPendingRemove ? null : typeof entry.share === 'number' ? entry.share : null,
       pendingAction: isPendingRemove ? 'remove' : null,
       isArchived: false,
       reason: null,
@@ -93,7 +93,7 @@ export function computeStreamRows(
       stream,
       entry: { offer_id: a.offer_id, state: null },
       offer: offersMap.get(a.offer_id) ?? null,
-      share: recalculated ? (addShares.get(a.offer_id) ?? null) : null,
+      share: addShares.get(a.offer_id) ?? null,
       pendingAction: 'add',
       isArchived: false,
       reason: null,
@@ -107,7 +107,7 @@ export function computeStreamRows(
         stream,
         entry: { offer_id: a.offer_id, state: a.state ?? null },
         offer: offersMap.get(a.offer_id) ?? null,
-        share: recalculated ? (addShares.get(a.offer_id) ?? null) : null,
+        share: addShares.get(a.offer_id) ?? null,
         pendingAction: 'add',
         isArchived: false,
         reason: null,

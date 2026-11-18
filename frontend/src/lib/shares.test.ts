@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ArchivedEntry, Offer, PendingRow, Stream } from '../api/types';
-import { computeStreamRows, recalculateShares } from './shares';
+import { addedShares, computeStreamRows } from './shares';
 
 function stream(offers: Array<[number, number | null]>, id = 1): Stream {
   return {
@@ -18,26 +18,20 @@ function pending(rows: Array<[number, 'add' | 'remove']>, streamId = 1): Pending
 const offers = (ids: number[]): Map<number, Offer | null> =>
   new Map(ids.map((id) => [id, { id, name: `Offer ${id}`, state: 'active', payout_value: 5, payout_currency: 'USD' }]));
 
-describe('recalculateShares', () => {
-  it('остаток добирается первым строкам: 3 → 34/33/33', () => {
-    expect(recalculateShares(3)).toEqual([34, 33, 33]);
+describe('addedShares', () => {
+  it('при живых весах новый офер получает средний вес: 4×25 -> 25', () => {
+    expect(addedShares([25, 25, 25, 25], 1)).toEqual([25]);
+    expect(addedShares([40, 30, 20, 10], 1)).toEqual([25]);
   });
 
-  it('ровные случаи: 4 → 25, 2 → 50', () => {
-    expect(recalculateShares(4)).toEqual([25, 25, 25, 25]);
-    expect(recalculateShares(2)).toEqual([50, 50]);
+  it('пустой поток: 100 делится с доборкой остатка первым строкам (3 -> 34/33/33)', () => {
+    expect(addedShares([], 3)).toEqual([34, 33, 33]);
+    expect(addedShares([], 4)).toEqual([25, 25, 25, 25]);
   });
 
-  it('сумма всегда 100', () => {
-    for (let n = 1; n <= 100; n++) {
-      const shares = recalculateShares(n)!;
-      expect(shares.reduce((a, b) => a + b, 0)).toBe(100);
-    }
-  });
-
-  it('total <= 0 → null', () => {
-    expect(recalculateShares(0)).toBeNull();
-    expect(recalculateShares(-1)).toBeNull();
+  it('count <= 0 → пусто', () => {
+    expect(addedShares([25], 0)).toEqual([]);
+    expect(addedShares([], -1)).toEqual([]);
   });
 });
 
@@ -66,8 +60,9 @@ describe('computeStreamRows — без pending', () => {
 });
 
 describe('computeStreamRows — с pending', () => {
-  it('remove: доля прочерк, остальные пересчитаны floor(100/n)+остаток', () => {
-    // live: 10, 11, 12 (34/33/33), remove 10 → итог: 11, 12 → 50/50, строка 10 на месте с «—»
+  it('remove: доля прочерк, живые показывают свои веса из Keitaro', () => {
+    // live: 10, 11, 12 (34/33/33), remove 10 → строка 10 на месте с «—»,
+    // остальные держат веса Keitaro и не пересчитываются локально.
     const rows = computeStreamRows(
       stream([
         [10, 34],
@@ -80,14 +75,14 @@ describe('computeStreamRows — с pending', () => {
     );
     expect(rows.map((r) => [r.entry.offer_id, r.share, r.pendingAction])).toEqual([
       [10, null, 'remove'],
-      [11, 50, null],
-      [12, 50, null],
+      [11, 33, null],
+      [12, 33, null],
     ]);
   });
 
-  it('remove + add: итоговый набор = живые − удалённые + добавленные', () => {
-    // live: 10, 11, 12; remove 10, add 20 → итоговый набор [11, 12, 20] → 34/33/33,
-    // остаток добирается первым СТРОКАМ ИТОГОВОГО НАБОРА (сначала живые, потом add).
+  it('remove + add: живые держат веса Keitaro, новый получает средний вес', () => {
+    // live: 10, 11, 12; remove 10, add 20 → живые 11 (33) и 12 (33) не меняются,
+    // новый 20 получает средний вес живых — 33.
     const rows = computeStreamRows(
       stream([
         [10, 34],
@@ -103,7 +98,7 @@ describe('computeStreamRows — с pending', () => {
     );
     expect(rows.map((r) => [r.entry.offer_id, r.share, r.pendingAction])).toEqual([
       [10, null, 'remove'],
-      [11, 34, null],
+      [11, 33, null],
       [12, 33, null],
       [20, 33, 'add'],
     ]);
@@ -115,10 +110,10 @@ describe('computeStreamRows — с pending', () => {
     ];
     const rows = computeStreamRows(stream([[10, 100]]), pending([[20, 'add']]), archive, offers([10, 20]));
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ entry: { offer_id: 10 }, share: 50, pendingAction: null });
+    expect(rows[0]).toMatchObject({ entry: { offer_id: 10 }, share: 100, pendingAction: null });
     expect(rows[1]).toMatchObject({
       entry: { offer_id: 20, state: 'active' },
-      share: 50,
+      share: 100,
       pendingAction: 'add',
       isArchived: false,
     });
@@ -196,9 +191,9 @@ describe('computeStreamRows — с pending', () => {
     ];
     const rows = computeStreamRows(stream([[10, 100]]), pending([[30, 'add']]), archive, offers([10, 20, 30]));
     expect(rows.map((r) => [r.entry.offer_id, r.share, r.pendingAction, r.isArchived])).toEqual([
-      [10, 50, null, false],
+      [10, 100, null, false],
       [20, null, null, true],
-      [30, 50, 'add', false],
+      [30, 100, 'add', false],
     ]);
   });
 });

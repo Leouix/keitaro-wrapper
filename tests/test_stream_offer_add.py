@@ -131,7 +131,9 @@ def test_add_to_empty_landings_share_100():
     assert r.json()["stream"]["offers"] == h.put_bodies[0]["offers"]
 
 
-def test_add_to_three_offers_reshare_25_state_preserved():
+def test_add_to_three_offers_keeps_weights_state_preserved():
+    # Ручные веса Keitaro не перетираются: живые оставляют свои share,
+    # новый офер получает средний вес живых (33) — доля 1/4 от суммы.
     h = StreamsHandler(LANDINGS_3)
     c = make_client(h)
     r = add_offer(c, LANDINGS_3["id"])
@@ -140,10 +142,10 @@ def test_add_to_three_offers_reshare_25_state_preserved():
     assert h.put_bodies[0] == {
         "campaign_id": CAMPAIGN_ID,
         "offers": [
-            {"offer_id": 25327, "share": 25, "state": "active"},
-            {"offer_id": 25329, "share": 25, "state": "paused"},  # state сохранён
-            {"offer_id": 25330, "share": 25, "state": "active"},
-            {"offer_id": NEW_OFFER_ID, "share": 25, "state": "active"},  # в конец
+            {"offer_id": 25327, "share": 33, "state": "active"},
+            {"offer_id": 25329, "share": 33, "state": "paused"},  # state сохранён
+            {"offer_id": 25330, "share": 33, "state": "active"},
+            {"offer_id": NEW_OFFER_ID, "share": 33, "state": "active"},  # в конец
         ],
     }
     # В PUT уходит только offer_id/share/state + campaign_id —
