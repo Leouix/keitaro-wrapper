@@ -38,7 +38,18 @@
   margin-top: 14px;
 }
 
-/* Пока есть ожидающие изменения (has-draft на карточке страницы). */
+/* Пока есть ожидающие изменения (has-draft на карточке страницы).
+   Красим и саму карточку-страницу (глобальный .card из layout.css — поэтому
+   section.hasDraft: специфичность 0-1-1 перекрывает .card 0-1-0 независимо
+   от порядка бандла), и вложенные секции потоков (.section). */
+section.hasDraft {
+  background: var(--draft-surface);
+}
+
+.hasDraft section {
+  background: var(--draft-surface);
+}
+
 .hasDraft .offerForm {
   background: var(--warn-bg);
 }
