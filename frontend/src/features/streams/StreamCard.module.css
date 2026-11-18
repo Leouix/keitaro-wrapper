@@ -50,8 +50,10 @@ section.hasDraft {
   background: var(--draft-surface);
 }
 
+/* Форма чуть темнее подложки (--warn-row #fef3c7), иначе на #fffbe9
+   блок формы не читается (разница с --warn-bg была 2 единицы). */
 .hasDraft .offerForm {
-  background: var(--warn-bg);
+  background: var(--warn-row);
 }
 
 .hasDraft .offerForm input {
