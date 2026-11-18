@@ -35,19 +35,6 @@ def _whitelist(c: dict) -> dict:
     return {field: c.get(field) for field in LIST_FIELDS}
 
 
-def _stale(db: Session, *, keitaro_id: int | None = None, name: str | None = None) -> dict:
-    row = (
-        db.get(CampaignCache, keitaro_id)
-        if keitaro_id is not None
-        else (
-            db.query(CampaignCache).filter(CampaignCache.name.ilike(name)).first() if name else None
-        )
-    )
-    if row is None:
-        raise HTTPException(503, "Keitaro unavailable and no cached data")
-    return {"stale": True, "campaign": row.payload}
-
-
 @router.get("")
 async def list_campaigns(
     query: str = Query("", description="Подстрока имени кампании"),
@@ -73,28 +60,6 @@ async def list_campaigns(
         raise HTTPException(502, "Keitaro returned unexpected campaigns format")
     matches = [c for c in data if needle in str(c.get("name") or "").lower()]
     return {"campaigns": [_whitelist(c) for c in matches], "stale": False, "query": needle}
-
-
-@router.get("/by-name/{name}")
-async def get_campaign_by_name(
-    name: str,
-    db: Session = Depends(get_db),
-    keitaro: KeitaroClient = Depends(get_keitaro_with_key),
-):
-    try:
-        data = await keitaro.get_campaigns()
-    except KeitaroUnavailable:
-        return _stale(db, name=name)
-    if isinstance(data, dict) and "campaigns" in data:
-        data = data["campaigns"]
-    wanted = name.strip().lower()
-    match = next(
-        (c for c in data if str(c.get("name", "")).strip().lower() == wanted), None
-    )
-    if match is None:
-        raise HTTPException(404, f"Campaign '{name}' not found")
-    _upsert(db, data)
-    return match
 
 
 @router.get("/{campaign_id}")
