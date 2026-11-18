@@ -27,7 +27,8 @@ DIST_DIR = WEB_DIR / "dist"
 INDEX_FILE = DIST_DIR / "index.html"
 
 FRONTEND_NOT_BUILT = (
-    "frontend не собран: нет web/dist/index.html (cd frontend && npm ci && npm run build)"
+    "frontend is not built: web/dist/index.html is missing "
+    "(cd frontend && npm ci && npm run build)"
 )
 
 

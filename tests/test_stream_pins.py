@@ -340,8 +340,8 @@ def test_put_pending_all_pinned_sum_100_409_pending_intact():
     r = put_pending(c, {"add": [25328], "remove": []})
     assert r.status_code == 409
     assert r.json()["detail"] == (
-        "Все оферы зафиксированы: свободного веса нет. "
-        "Снимите фиксацию хотя бы с одного офера."
+        "All offers are pinned: no free weight left. "
+        "Unpin at least one offer."
     )
     assert h.put_bodies == []
     # PUT отклонён — ничего не записано (в БД только пины).
@@ -402,8 +402,8 @@ def test_apply_all_pinned_sum_100_409_pending_intact_no_put():
     r = apply_pending(c)
     assert r.status_code == 409
     assert r.json()["detail"] == (
-        "Все оферы зафиксированы: свободного веса нет. "
-        "Снимите фиксацию хотя бы с одного офера."
+        "All offers are pinned: no free weight left. "
+        "Unpin at least one offer."
     )
     assert h.put_bodies == []
     from tests.test_stream_pending import read_pending
@@ -421,7 +421,7 @@ def test_sync_add_to_fully_pinned_stream_409():
 
     r = c.post(f"/api/streams/{STREAM_ID}/offers", json={"offer_id": 25328})
     assert r.status_code == 409
-    assert "свободного веса нет" in r.json()["detail"]
+    assert "no free weight left" in r.json()["detail"]
     assert h.put_bodies == []
 
 

@@ -25,7 +25,7 @@ def _whitelist(c: dict) -> dict:
 
 @router.get("")
 async def list_campaigns(
-    query: str = Query("", description="Подстрока имени кампании"),
+    query: str = Query("", description="Campaign name substring"),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
     """Живой поиск кампаний по имени.

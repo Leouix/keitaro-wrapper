@@ -412,7 +412,7 @@ def test_apply_add_unknown_offer_404_pending_intact():
 
     r = apply_pending(c)
     assert r.status_code == 404
-    assert r.json()["detail"] == "Офер не найден в Keitaro"
+    assert r.json()["detail"] == "Offer not found in Keitaro"
     assert h.put_bodies == []
     assert read_pending(Session) == [(UNKNOWN_OFFER, "add")]
 

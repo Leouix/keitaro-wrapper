@@ -87,7 +87,7 @@ def test_frontend_not_built_503(client, monkeypatch):
     for path in ("/", "/campaigns", "/campaigns/new", "/fb/campaigns/212502/streams"):
         r = client.get(path)
         assert r.status_code == 503, f"{path}: {r.status_code}"
-        assert "frontend не собран" in r.json()["detail"]
+        assert "frontend is not built" in r.json()["detail"]
 
 
 def test_assets_hidden_files_blocked(client):

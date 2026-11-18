@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 # Правило 6 контракта пинов: detail 409 при добавлении офера в поток,
 # где свободного веса нет.
 PIN_NO_FREE_WEIGHT = (
-    "Все оферы зафиксированы: свободного веса нет. "
-    "Снимите фиксацию хотя бы с одного офера."
+    "All offers are pinned: no free weight left. "
+    "Unpin at least one offer."
 )
 
 router = APIRouter(prefix="/api/streams", tags=["streams"])
@@ -372,7 +372,7 @@ async def _get_stream_or_raise(keitaro: KeitaroClient, stream_id: int) -> dict:
         raise HTTPException(502, "Keitaro unavailable") from e
     except HTTPException as e:
         if e.status_code == 404:
-            raise HTTPException(404, "Поток не найден") from e
+            raise HTTPException(404, "Flow not found") from e
         raise  # 403 permission и прочие 4xx — как есть
 
 
@@ -381,7 +381,7 @@ def _check_landings_schema(stream: dict) -> None:
     if schema != "landings":
         # redirect-поток принимает offers с 200, но молча игнорирует —
         # не делаем PUT, который ничего не изменит.
-        raise HTTPException(409, f"Поток не принимает оферы (schema={schema})")
+        raise HTTPException(409, f"Flow does not accept offers (schema={schema})")
 
 
 @router.post("/{stream_id}/offers")
@@ -404,7 +404,7 @@ async def add_offer_to_stream(
         raise HTTPException(502, "Keitaro unavailable") from e
     except HTTPException as e:
         if e.status_code == 404:
-            raise HTTPException(404, "Офер не найден в Keitaro") from e
+            raise HTTPException(404, "Offer not found in Keitaro") from e
         raise
 
     offers = list(stream.get("offers") or [])
@@ -491,7 +491,7 @@ async def remove_offer_from_stream(
         if archived is not None:
             # Уже удалён (у нас архивная строка) — идемпотентный ответ.
             return {"removed": False, "already": True, "stream": stream}
-        raise HTTPException(404, "Офер не найден в потоке")
+        raise HTTPException(404, "Offer not found in this flow")
 
     # Удаление последнего офера разрешено: Keitaro принимает offers: []
     # (проверено живым PUT на потоке 1313077, 2026-11-17).
@@ -652,7 +652,7 @@ async def put_stream_pending(
     if overlap:
         raise HTTPException(
             400,
-            "Один и тот же офер не может быть одновременно в add и remove: "
+            "The same offer cannot be in both add and remove: "
             f"{sorted(overlap)}",
         )
 
@@ -943,8 +943,8 @@ async def apply_stream_pending(
         # решает, к какой кампании он относится.
         raise HTTPException(
             409,
-            f"Поток относится к кампании {stream.get('campaign_id')}, "
-            f"а не к {campaign_id}",
+            f"Flow belongs to campaign {stream.get('campaign_id')}, "
+            f"not {campaign_id}",
         )
 
     offers = list(stream.get("offers") or [])
@@ -967,7 +967,7 @@ async def apply_stream_pending(
             raise HTTPException(502, "Keitaro unavailable") from e
         except HTTPException as e:
             if e.status_code == 404:
-                raise HTTPException(404, "Офер не найден в Keitaro") from e
+                raise HTTPException(404, "Offer not found in Keitaro") from e
             raise
 
     if final_ids == live:

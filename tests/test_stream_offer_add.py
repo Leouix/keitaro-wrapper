@@ -188,7 +188,7 @@ def test_stream_404_message():
     c = make_client(h)
     r = add_offer(c, 424242)  # другого потока в моке нет
     assert r.status_code == 404
-    assert r.json()["detail"] == "Поток не найден"
+    assert r.json()["detail"] == "Flow not found"
     assert h.put_bodies == []
 
 
@@ -197,7 +197,7 @@ def test_offer_404_no_put():
     c = make_client(h)
     r = add_offer(c, LANDINGS_EMPTY["id"], offer_id=999999)  # офера нет в моке
     assert r.status_code == 404
-    assert r.json()["detail"] == "Офер не найден в Keitaro"
+    assert r.json()["detail"] == "Offer not found in Keitaro"
     assert h.put_bodies == []
 
 
@@ -316,5 +316,5 @@ def test_offer_id_bool_coerced_then_404():
     c = make_client(h)
     r = c.post(f"/api/streams/{LANDINGS_EMPTY['id']}/offers", json={"offer_id": True})
     assert r.status_code == 404
-    assert r.json()["detail"] == "Офер не найден в Keitaro"
+    assert r.json()["detail"] == "Offer not found in Keitaro"
     assert h.put_bodies == []

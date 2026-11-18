@@ -304,7 +304,7 @@ def test_delete_unknown_offer_404_no_put():
     c, Session = make_client(h)
     r = delete_offer(c, offer_id=999999)
     assert r.status_code == 404
-    assert r.json()["detail"] == "Офер не найден в потоке"
+    assert r.json()["detail"] == "Offer not found in this flow"
     assert h.put_bodies == []
     assert read_state(Session, STREAM_ID, 999999) is None
 
