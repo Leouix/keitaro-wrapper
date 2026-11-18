@@ -5,10 +5,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import Base, engine
+from .deps import get_keitaro_with_key
 from .keitaro import KeitaroUnavailable
 from .routers import campaigns, offers, streams
 from .routers import settings as settings_router
-from .routers.campaigns import get_keitaro_with_key
 
 Base.metadata.create_all(bind=engine)
 

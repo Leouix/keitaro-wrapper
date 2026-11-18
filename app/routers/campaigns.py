@@ -5,25 +5,13 @@ from fastapi import Path as FPath
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
-from ..keybox import KeyStore, get_key_store, resolve_key
 from ..models import CampaignCache, StreamOfferState, utcnow
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
-
-
-def get_keitaro() -> KeitaroClient:
-    return KeitaroClient()
-
-
-def get_keitaro_with_key(store: KeyStore = Depends(get_key_store)) -> KeitaroClient:
-    """Клиент для data-эндпоинтов: без настроенного ключа — 409, а не поход в Keitaro."""
-    resolved = resolve_key(store)
-    if resolved is None:
-        raise HTTPException(409, "API key is not configured")
-    return KeitaroClient(api_key=resolved[0])
 
 
 def _upsert(db: Session, campaigns: list[dict]):
@@ -91,7 +79,7 @@ async def list_campaigns(
 async def get_campaign_by_name(
     name: str,
     db: Session = Depends(get_db),
-    keitaro: KeitaroClient = Depends(get_keitaro),
+    keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
     try:
         data = await keitaro.get_campaigns()
@@ -113,7 +101,7 @@ async def get_campaign_by_name(
 async def get_campaign(
     campaign_id: int,
     db: Session = Depends(get_db),
-    keitaro: KeitaroClient = Depends(get_keitaro),
+    keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
     """Детальная кампания для фронта: только whitelisted поля (без token).
     Кэш при недоступности Keitaro — в той же плоской форме + stale=true."""

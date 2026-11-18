@@ -29,9 +29,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
 from ..models import StreamOfferPending, StreamOfferState, utcnow
-from .campaigns import get_keitaro_with_key
 
 logger = logging.getLogger(__name__)
 

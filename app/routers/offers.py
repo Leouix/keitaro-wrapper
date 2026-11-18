@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Path
 
+from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
-from .campaigns import get_keitaro_with_key
 
 router = APIRouter(prefix="/api/offers", tags=["offers"])
 

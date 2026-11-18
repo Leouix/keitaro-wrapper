@@ -9,10 +9,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
+from app.deps import get_keitaro_with_key
 from app.keitaro import KeitaroClient
 from app.main import app
 from app.models import CampaignCache
-from app.routers.campaigns import get_keitaro
 
 TEST_KEY = "dummy-test-key-not-a-real-secret"
 
@@ -64,7 +64,8 @@ def make_app_client(handler, extra_overrides=None) -> tuple[TestClient, sessionm
             db.close()
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_keitaro] = lambda: make_keitaro(handler)
+    # Единая фабрика клиента для всех data-эндпоинтов (app/deps.py).
+    app.dependency_overrides[get_keitaro_with_key] = lambda: make_keitaro(handler)
     app.dependency_overrides.update(extra_overrides or {})
     return TestClient(app), Session
 

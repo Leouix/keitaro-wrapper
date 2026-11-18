@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.keybox import KeyStore, get_key_store
 from app.main import app
-from app.routers.campaigns import get_keitaro_with_key
+from app.deps import get_keitaro_with_key
 
 from tests.conftest import make_app_client, make_keitaro
 

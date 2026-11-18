@@ -15,7 +15,7 @@ import app.routers.streams as streams_module
 from app.keybox import KeyStore, get_key_store
 from app.main import app
 from app.models import StreamOfferPending
-from app.routers.campaigns import get_keitaro_with_key
+from app.deps import get_keitaro_with_key
 
 from tests.conftest import make_app_client, make_keitaro
 from tests.test_stream_offer_add import CAMPAIGN_ID, StreamsHandler
@@ -511,7 +511,9 @@ def test_pending_without_api_key_but_apply_needs_one(tmp_path):
     h = PendingHandler(LANDINGS_3)
     c, Session = make_app_client(h)
     # Никакого ключа нет (env-фолбэка больше нет): data-эндпоинты дают 409,
-    # pending всё равно работает.
+    # pending всё равно работает. Мок-клиент из каркаса снимаем — проверяем
+    # реальную зависимость.
+    app.dependency_overrides.pop(get_keitaro_with_key, None)
     app.dependency_overrides[get_key_store] = lambda: KeyStore(tmp_path / "absent.key")
 
     r_streams = c.get(f"/api/campaigns/{CAMPAIGN_ID}/streams")

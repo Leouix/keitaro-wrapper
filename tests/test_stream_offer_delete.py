@@ -14,7 +14,7 @@ import pytest
 from app.keybox import KeyStore, get_key_store
 from app.main import app
 from app.models import StreamOfferState, utcnow
-from app.routers.campaigns import get_keitaro_with_key
+from app.deps import get_keitaro_with_key
 from app.routers.streams import reshare
 
 from tests.conftest import HTML_LOGIN_PAGE, make_app_client, make_keitaro
