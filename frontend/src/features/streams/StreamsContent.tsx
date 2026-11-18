@@ -117,6 +117,9 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
 
   // Заголовок и document.title: до ответа — ID, после — название кампании.
   const title = `Потоки кампании ${campaignName || campaignId}`;
+
+  // Ссылка на кампанию в админке Keitaro: внешняя, в новой вкладке.
+  const keitaroAdminHref = `https://tlgk.host/admin/#!/campaign/${campaignId}/main`;
   useEffect(() => {
     document.title = `${title} — Keitaro`;
   }, [title]);
@@ -476,7 +479,14 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
           <PageHeader
             back={{ to: '/campaigns', children: '← К списку кампаний' }}
             title="Потоки кампании"
-            meta={<p className="counter">ID кампании: {campaignId}</p>}
+            meta={
+              <p className="counter">
+                ID кампании: {campaignId} ·{' '}
+                <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
+                  открыть в Keitaro ↗
+                </a>
+              </p>
+            }
           />
           <div ref={errorRef} role="alert" tabIndex={-1} className={s.errorBlock}>
             <Message kind="error">{pageError.text}</Message>
@@ -508,7 +518,14 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
           <PageHeader
             back={{ to: '/campaigns', children: '← К списку кампаний' }}
             title={title}
-            meta={<p className="counter">ID кампании: {campaignId}</p>}
+            meta={
+              <p className="counter">
+                ID кампании: {campaignId} ·{' '}
+                <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
+                  открыть в Keitaro ↗
+                </a>
+              </p>
+            }
           />
           <div aria-busy="true">
             <p className="sr-only" role="status">
@@ -528,7 +545,14 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
           <PageHeader
             back={{ to: '/campaigns', children: '← К списку кампаний' }}
             title={title}
-            meta={<p className="counter">ID кампании: {campaignId}</p>}
+            meta={
+              <p className="counter">
+                ID кампании: {campaignId} ·{' '}
+                <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
+                  открыть в Keitaro ↗
+                </a>
+              </p>
+            }
           />
           <EmptyState title="В этой кампании нет потоков." />
           {/* Обновление и из empty-state: поток, добавленный в Кейтаро,
@@ -560,7 +584,14 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
         <PageHeader
           back={{ to: '/campaigns', children: '← К списку кампаний' }}
           title={title}
-          meta={<p className="counter">ID кампании: {campaignId}</p>}
+          meta={
+            <p className="counter">
+              ID кампании: {campaignId} ·{' '}
+              <a className="link" href={keitaroAdminHref} target="_blank" rel="noopener noreferrer">
+                открыть в Keitaro ↗
+              </a>
+            </p>
+          }
         />
 
         <div ref={rootRef} aria-busy={(sending || refreshing) || undefined}>
