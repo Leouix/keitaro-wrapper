@@ -30,6 +30,50 @@
   margin: 10px 0 0;
 }
 
+/* Кнопка-пин у ячейки «Доля»: фиксирует вес офера. */
+.shareCell {
+  white-space: nowrap;
+}
+
+.pinBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-left: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  vertical-align: middle;
+  cursor: pointer;
+  transition:
+    background-color var(--speed) var(--ease-out),
+    border-color var(--speed) var(--ease-out);
+}
+
+.pinBtn:hover {
+  border-color: var(--primary);
+  background: var(--info-bg);
+}
+
+.pinBtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+/* Зафиксированный вес: рамка под цвет пина, кнопка «нажата». */
+.pinBtn[aria-pressed='true'] {
+  border-color: var(--primary);
+}
+
+.pinBtn img {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
 /* Несохранённые изменения: янтарная подложка у формы добавления. */
 .offerForm {
   padding: 14px;

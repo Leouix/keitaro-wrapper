@@ -1,8 +1,13 @@
-import type { ArchivedEntry, PendingRow, Stream } from '../api/types';
+import type { ArchivedEntry, PendingRow, PinRow, Stream } from '../api/types';
 
 /** Ожидающие изменения одного потока. */
 export function pendingForStream(pending: PendingRow[], streamId: number): PendingRow[] {
   return pending.filter((p) => p.stream_id === streamId);
+}
+
+/** Зафиксированные веса (пины) одного потока. */
+export function pinsForStream(pins: PinRow[], streamId: number): PinRow[] {
+  return pins.filter((p) => p.stream_id === streamId);
 }
 
 /** Полный набор ожидающих изменений потока — тело PUT .../pending. */

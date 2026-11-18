@@ -13,12 +13,13 @@ const json = (status: number, body: unknown) => ({
 
 const stream: Stream = { id: 1313478, schema: 'landings', offers: [] } as Stream;
 
-function renderCard() {
+function renderCard(overrides: Partial<Parameters<typeof StreamCard>[0]> = {}) {
   return render(
     <StreamCard
       stream={stream}
       pendingRows={[]}
       archive={[]}
+      pins={[]}
       offersMap={new Map()}
       sending={false}
       busy={false}
@@ -28,6 +29,8 @@ function renderCard() {
       onCancel={vi.fn()}
       onBringBack={vi.fn()}
       onAdd={vi.fn(async () => {})}
+      onPinToggle={vi.fn()}
+      {...overrides}
     />,
   );
 }
@@ -39,6 +42,75 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('StreamCard — кнопка-пин веса', () => {
+  const liveStream: Stream = {
+    id: 1313478,
+    name: 'Flow 1',
+    schema: 'landings',
+    offers: [
+      { offer_id: 10, share: 60, state: 'active' },
+      { offer_id: 11, share: 40, state: 'active' },
+      { offer_id: 12, share: null, state: 'active' },
+    ],
+  };
+
+  function pinBtn(offerId: number) {
+    return document.querySelector<HTMLButtonElement>(
+      `button[data-pin-stream-id="1313478"][data-pin-offer-id="${offerId}"]`,
+    );
+  }
+
+  it('живой офер: кнопка есть, aria-pressed=false, подписи и клик отдают текущий вес', () => {
+    const onPinToggle = vi.fn();
+    renderCard({ stream: liveStream, onPinToggle });
+
+    const btn = pinBtn(10)!;
+    expect(btn).toBeTruthy();
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+    expect(btn.getAttribute('aria-label')).toBe('Зафиксировать вес офера #10 в потоке Flow 1');
+    expect(btn.getAttribute('title')).toContain('Зафиксировать вес 60%');
+    expect(btn.querySelector('img')).toBeTruthy();
+
+    fireEvent.click(btn);
+    expect(onPinToggle).toHaveBeenCalledTimes(1);
+    expect(onPinToggle.mock.calls[0][1]).toBe(10);
+    expect(onPinToggle.mock.calls[0][2]).toBe(60);
+  });
+
+  it('зафиксированный офер: aria-pressed=true, подпись «Снять фиксацию…», иконка pined', () => {
+    renderCard({
+      stream: liveStream,
+      pins: [{ stream_id: 1313478, offer_id: 10, share: 60 }],
+      onPinToggle: vi.fn(),
+    });
+
+    const btn = pinBtn(10)!;
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    expect(btn.getAttribute('aria-label')).toBe('Снять фиксацию веса офера #10 в потоке Flow 1');
+  });
+
+  it('недоступна: архивная строка, pending-remove, доля «—»; доступна у pending-add', () => {
+    renderCard({
+      stream: liveStream,
+      pendingRows: [
+        { stream_id: 1313478, offer_id: 11, action: 'remove', created_at: null },
+        { stream_id: 1313478, offer_id: 20, action: 'add', created_at: null },
+      ],
+      archive: [{ stream_id: 1313478, offer_id: 30, state: 'active', reason: 'user' }],
+      onPinToggle: vi.fn(),
+    });
+
+    // remove → прочерк, кнопки нет
+    expect(pinBtn(11)).toBeNull();
+    // доля null у живого офера → кнопки нет
+    expect(pinBtn(12)).toBeNull();
+    // архив → кнопки нет
+    expect(pinBtn(30)).toBeNull();
+    // pending-add с показанным весом → кнопка есть
+    expect(pinBtn(20)).toBeTruthy();
+  });
 });
 
 describe('StreamCard: набор ID по цифре', () => {

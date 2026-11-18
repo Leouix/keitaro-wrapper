@@ -35,6 +35,154 @@ describe('addedShares', () => {
   });
 });
 
+/**
+ * Таблица кейсов пинов (паритет с бэкендом Lin) — финальный состав:
+ * живые − remove + add. Деление остатка (100 − Σ пинов) между незапаянными,
+ * остаток — первому по порядку; пин на единственном офере сбрасывается на 100.
+ */
+describe('computeStreamRows — с пинами', () => {
+  it('нет пинов — как раньше: добавляемый получает средний вес живых', () => {
+    const rows = computeStreamRows(
+      stream([
+        [10, 60],
+        [11, 40],
+      ]),
+      pending([[20, 'add']]),
+      [],
+      offers([10, 11, 20]),
+      [],
+    );
+    expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned])).toEqual([
+      [10, 60, false],
+      [11, 40, false],
+      [20, 50, false], // средний вес живых
+    ]);
+  });
+
+  it('один пин: незапаянные делят остаток поровну, остаток первому', () => {
+    // финальный состав: 10 (пин 60), 11, 20 (add). Остаток 40 → 11 и 20 по 20.
+    const rows = computeStreamRows(
+      stream([
+        [10, 60],
+        [11, 40],
+      ]),
+      pending([[20, 'add']]),
+      [],
+      offers([10, 11, 20]),
+      [{ stream_id: 1, offer_id: 10, share: 60 }],
+    );
+    expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned])).toEqual([
+      [10, 60, true], // живая строка — вес из Keitaro, пин виден
+      [11, 40, false], // живая строка — вес из Keitaro
+      [20, 20, false], // добавляемому достаётся 40 / 2
+    ]);
+  });
+
+  it('два пина: остаток делится между незапаянными', () => {
+    // пины 50 + 30 = 80, остаток 20 → оферы 12 и 20 (add) по 10.
+    const rows = computeStreamRows(
+      stream([
+        [10, 50],
+        [11, 30],
+        [12, 20],
+      ]),
+      pending([[20, 'add']]),
+      [],
+      offers([10, 11, 12, 20]),
+      [
+        { stream_id: 1, offer_id: 10, share: 50 },
+        { stream_id: 1, offer_id: 11, share: 30 },
+      ],
+    );
+    expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned])).toEqual([
+      [10, 50, true],
+      [11, 30, true],
+      [12, 20, false], // живая строка — вес из Keitaro
+      [20, 10, false], // добавляемому достаётся 20 / 2
+    ]);
+  });
+
+  it('пин на добавляемом офере: показывается зафиксированный вес', () => {
+    // add 20 запаян на 33; незапаянных в финальном составе нет (10,11,12 живые,
+    // их веса из Keitaro 34/33/33 не пересчитываются) → делить нечего.
+    const rows = computeStreamRows(
+      stream([
+        [10, 34],
+        [11, 33],
+        [12, 33],
+      ]),
+      pending([[20, 'add']]),
+      [],
+      offers([10, 11, 12, 20]),
+      [{ stream_id: 1, offer_id: 20, share: 33 }],
+    );
+    expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned])).toEqual([
+      [10, 34, false],
+      [11, 33, false],
+      [12, 33, false],
+      [20, 33, true],
+    ]);
+  });
+
+  it('remove запаянного офера: его вес освобождается и делится заново', () => {
+    // живые 10/11/12 (34/33/33), пин на 10, remove 10, add 20:
+    // финальный состав 11, 12, 20 без пинов → 100 делится 33/33/34.
+    const rows = computeStreamRows(
+      stream([
+        [10, 34],
+        [11, 33],
+        [12, 33],
+      ]),
+      pending([
+        [10, 'remove'],
+        [20, 'add'],
+      ]),
+      [],
+      offers([10, 11, 12, 20]),
+      [{ stream_id: 1, offer_id: 10, share: 34 }],
+    );
+    expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned, r.pendingAction])).toEqual([
+      [10, null, false, 'remove'], // строка остаётся с прочерком
+      [11, 33, false, null], // живые показывают веса Keitaro
+      [12, 33, false, null],
+      [20, 33, false, 'add'], // остаток 100 / 3: первому (живому 11) 34, добавляемому 33
+    ]);
+  });
+
+  it('остался один офер: вес сбрасывается на 100, даже если был запаян', () => {
+    // пустой живой список, add 20 запаян на 40 — он единственный в финальном составе.
+    const rows = computeStreamRows(
+      stream([]),
+      pending([[20, 'add']]),
+      [],
+      offers([20]),
+      [{ stream_id: 1, offer_id: 20, share: 40 }],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ entry: { offer_id: 20 }, share: 100, pinned: true });
+  });
+
+  it('100 на троих с одним пином: пин держит свой вес, остальные поровну', () => {
+    // пустой поток, три добавления: 20 запаян на 40 → 21 и 22 получают по 30.
+    const rows = computeStreamRows(
+      stream([]),
+      pending([
+        [20, 'add'],
+        [21, 'add'],
+        [22, 'add'],
+      ]),
+      [],
+      offers([20, 21, 22]),
+      [{ stream_id: 1, offer_id: 20, share: 40 }],
+    );
+    expect(rows.map((r) => [r.entry.offer_id, r.share, r.pinned])).toEqual([
+      [20, 40, true],
+      [21, 30, false],
+      [22, 30, false],
+    ]);
+  });
+});
+
 describe('computeStreamRows — без pending', () => {
   it('живые строки со своими долями, архив после живых', () => {
     const rows = computeStreamRows(

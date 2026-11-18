@@ -1,6 +1,6 @@
 // Страница потоков: общий блок при status 0 (сервер/сеть недоступны).
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { StreamsContent } from './StreamsContent';
 
@@ -91,6 +91,258 @@ describe('StreamsContent — сервер недоступен (status 0)', () =
       screen.queryByText('Сервер не отвечает. Проверьте, что uvicorn запущен, и обновите страницу.'),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Повторить' })).toBeNull();
+  });
+});
+
+describe('StreamsContent — пины веса', () => {
+  const pinSelector =
+    'button[data-pin-stream-id="1313478"][data-pin-offer-id="4440"]';
+  const pinBtn = () => document.querySelector<HTMLButtonElement>(pinSelector)!;
+
+  function makeStreamsFetch(opts: {
+    pinsInPending?: Array<{ stream_id: number; offer_id: number; share: number }>;
+    pinsPut?: (body: { pins: unknown[] }) => { status: number; body: unknown };
+    pendingPut?: () => { status: number; body: unknown };
+  }) {
+    return vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (method === 'PUT' && url.endsWith('/pins')) {
+        const out = opts.pinsPut
+          ? opts.pinsPut(JSON.parse(String(init!.body)))
+          : { status: 200, body: { pins: [] } };
+        return json(out.status, out.body);
+      }
+      if (method === 'PUT' && url.endsWith('/pending')) {
+        const out = opts.pendingPut
+          ? opts.pendingPut()
+          : { status: 200, body: { pending: [] } };
+        return json(out.status, out.body);
+      }
+      if (url.endsWith('/streams')) return json(200, streamsBody);
+      if (url.endsWith('/streams/archive')) return json(200, { archived: [] });
+      if (url.endsWith('/streams/pending')) {
+        return json(200, { pending: [], pins: opts.pinsInPending ?? [] });
+      }
+      if (/\/api\/campaigns\/\d+$/.test(url)) return json(200, { name: 'Кампа 1' });
+      if (url.startsWith('/api/offers/')) {
+        const id = Number(url.replace('/api/offers/', ''));
+        return json(200, { id, name: `Офер ${id}` });
+      }
+      return json(404, null);
+    });
+  }
+
+  it('пин: PUT .../pins полным набором потока, после ответа aria-pressed=true', async () => {
+    const fetchMock = makeStreamsFetch({
+      pinsPut: (body) => ({
+        status: 200,
+        body: { pins: body.pins.map((p: any) => ({ stream_id: 1313478, ...p })) },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderStreams();
+
+    await screen.findByText('#4440');
+    expect(pinBtn().getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(pinBtn());
+
+    await waitFor(() => expect(pinBtn().getAttribute('aria-pressed')).toBe('true'));
+    const pinsCall = fetchMock.mock.calls.find(
+      ([u, i]) => u === '/api/campaigns/211903/streams/1313478/pins' && i?.method === 'PUT',
+    );
+    expect(pinsCall).toBeTruthy();
+    expect(JSON.parse(String(pinsCall![1]!.body))).toEqual({
+      pins: [{ offer_id: 4440, share: 100 }],
+    });
+  });
+
+  it('снятие пина: PUT без этого офера, aria-pressed=false', async () => {
+    const fetchMock = makeStreamsFetch({
+      pinsInPending: [{ stream_id: 1313478, offer_id: 4440, share: 100 }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderStreams();
+
+    await screen.findByText('#4440');
+    expect(pinBtn().getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(pinBtn());
+
+    await waitFor(() => expect(pinBtn().getAttribute('aria-pressed')).toBe('false'));
+    const pinsCall = fetchMock.mock.calls.find(
+      ([u, i]) => u === '/api/campaigns/211903/streams/1313478/pins' && i?.method === 'PUT',
+    );
+    expect(JSON.parse(String(pinsCall![1]!.body))).toEqual({ pins: [] });
+  });
+
+  it('ошибка PUT pins (500): откат — пин снят, текст ошибки в карточке потока', async () => {
+    const fetchMock = makeStreamsFetch({
+      pinsPut: () => ({ status: 500, body: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderStreams();
+
+    await screen.findByText('#4440');
+    fireEvent.click(pinBtn());
+
+    await screen.findByText('Не удалось изменить фиксацию веса. (код 500).');
+    expect(pinBtn().getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('404 у PUT pins (бэкенд без роутов пинов): честный текст «Сервер пока не поддерживает фиксацию веса.»', async () => {
+    const fetchMock = makeStreamsFetch({
+      pinsPut: () => ({ status: 404, body: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderStreams();
+
+    await screen.findByText('#4440');
+    fireEvent.click(pinBtn());
+
+    expect(await screen.findByText('Сервер пока не поддерживает фиксацию веса.')).toBeTruthy();
+  });
+
+  it('409 от PUT pending при добавлении: текст с бэка рядом с пикером оферов, без баннера вверху', async () => {
+    const fetchMock = makeStreamsFetch({
+      pendingPut: () => ({
+        status: 409,
+        body: { detail: 'Все оферы запаяны на 100 — сначала снимите фиксацию.' },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderStreams();
+
+    await screen.findByText('#4440');
+    const input = document.getElementById('offer-id-1313478') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '4516' } });
+    // Поиск с debounce 500 мс: ждем найденную подсказку, только потом «Добавить».
+    await screen.findByText(/#4516 — Офер 4516/, {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+
+    expect(
+      await screen.findByText('Все оферы запаяны на 100 — сначала снимите фиксацию.'),
+    ).toBeTruthy();
+    // Ровно один блок ошибки — в карточке, общего баннера страницы нет.
+    expect(screen.getAllByText(/запаяны на 100/)).toHaveLength(1);
+    // Откат: черновик исчез, добавление не осталось на экране.
+    expect(screen.queryByText('черновик')).toBeNull();
+  });
+
+  it('«Обновить из Кейтаро» не сбрасывает пины', async () => {
+    const fetchMock = makeStreamsFetch({
+      pinsInPending: [{ stream_id: 1313478, offer_id: 4440, share: 100 }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderStreams();
+
+    await screen.findByText('#4440');
+    fireEvent.click(screen.getByRole('button', { name: /Обновить из Кейтаро/ }));
+    await screen.findByText(/Обновлено в/);
+
+    expect(pinBtn().getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('пин черновика → «Отменить» → повторное добавление того же офера не запаяно', async () => {
+    // Серверная сторона pending в моке живёт между запросами — как БД.
+    let pendingNow: Array<{ stream_id: number; offer_id: number; action: 'add' | 'remove' }> = [];
+    const base = makeStreamsFetch({
+      pendingPut: () => ({ status: 200, body: { pending: pendingNow } }),
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (method === 'PUT' && url.endsWith('/pending')) {
+          const body = JSON.parse(String(init!.body)) as { add: number[]; remove: number[] };
+          pendingNow = [
+            ...body.add.map((offer_id) => ({ stream_id: 1313478, offer_id, action: 'add' as const })),
+            ...body.remove.map((offer_id) => ({ stream_id: 1313478, offer_id, action: 'remove' as const })),
+          ];
+          // Сервер (после фикса Lin) удаляет пин отменённого add — зеркало его поведения.
+          return json(200, { pending: pendingNow });
+        }
+        return base(url, init);
+      }),
+    );
+    renderStreams();
+
+    const input = () => document.getElementById('offer-id-1313478') as HTMLInputElement;
+    const draftPin = () =>
+      document.querySelector<HTMLButtonElement>(
+        'button[data-pin-stream-id="1313478"][data-pin-offer-id="4516"]',
+      )!;
+
+    // 1. Добавляем черновик 4516 и запаиваем его вес.
+    await screen.findByText('#4440');
+    fireEvent.change(input(), { target: { value: '4516' } });
+    await screen.findByText(/#4516 — Офер 4516/, {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+    await screen.findByText('черновик');
+    expect(draftPin().getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(draftPin());
+    await waitFor(() => expect(draftPin().getAttribute('aria-pressed')).toBe('true'));
+
+    // 2. «Отменить» — черновик исчезает, пин пары уходит локально.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Отменить отложенное изменение офера #4516 в потоке Flow 1' }),
+    );
+    await waitFor(() => expect(screen.queryByText('черновик')).toBeNull());
+
+    // 3. Сразу добавляем тот же офер: незапаянный, иконка pin.png.
+    fireEvent.change(input(), { target: { value: '4516' } });
+    await screen.findByText(/#4516 — Офер 4516/, {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+    await screen.findByText('черновик');
+
+    expect(draftPin().getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('пин живого офера остаётся при отмене черновика другого офера', async () => {
+    let pendingNow: Array<{ stream_id: number; offer_id: number; action: 'add' | 'remove' }> = [];
+    const base = makeStreamsFetch({
+      pinsInPending: [{ stream_id: 1313478, offer_id: 4440, share: 100 }],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (method === 'PUT' && url.endsWith('/pending')) {
+          const body = JSON.parse(String(init!.body)) as { add: number[]; remove: number[] };
+          pendingNow = [
+            ...body.add.map((offer_id) => ({ stream_id: 1313478, offer_id, action: 'add' as const })),
+            ...body.remove.map((offer_id) => ({ stream_id: 1313478, offer_id, action: 'remove' as const })),
+          ];
+          return json(200, { pending: pendingNow });
+        }
+        return base(url, init);
+      }),
+    );
+    renderStreams();
+
+    const input = () => document.getElementById('offer-id-1313478') as HTMLInputElement;
+
+    await screen.findByText('#4440');
+    expect(pinBtn().getAttribute('aria-pressed')).toBe('true'); // живой запаян
+
+    // Черновик 4516 и его отмена: PUT pins не вызывается, пин 4440 на месте.
+    fireEvent.change(input(), { target: { value: '4516' } });
+    await screen.findByText(/#4516 — Офер 4516/, {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+    await screen.findByText('черновик');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Отменить отложенное изменение офера #4516 в потоке Flow 1' }),
+    );
+    await waitFor(() => expect(screen.queryByText('черновик')).toBeNull());
+
+    expect(pinBtn().getAttribute('aria-pressed')).toBe('true');
+    const pinsCall = base.mock.calls.filter(
+      ([u, i]) => u === '/api/campaigns/211903/streams/1313478/pins' && i?.method === 'PUT',
+    );
+    expect(pinsCall).toHaveLength(0);
   });
 });
 

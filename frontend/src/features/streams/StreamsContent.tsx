@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { acceptJson, jsonHeaders, requestJson } from '../../api/client';
-import type { ApplyResult, ArchivedEntry, Offer, PendingRow, Stream } from '../../api/types';
+import type {
+  ApplyResult,
+  ArchivedEntry,
+  Offer,
+  PendingRow,
+  PinRow,
+  Stream,
+} from '../../api/types';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Message, StatusLine } from '../../components/ui/Message';
@@ -12,11 +19,12 @@ import {
   emptyStreamTargets,
   pendingBody,
   pendingForStream,
+  pinsForStream,
   replacePendingForStream,
   sortedStreams,
   streamName,
 } from '../../lib/pending';
-import { applyErrorText, pendingChangeErrorText, refreshErrorText } from './errorTexts';
+import { applyErrorText, pendingChangeErrorText, pinsErrorText, refreshErrorText } from './errorTexts';
 import { SendBar } from './SendBar';
 import { StreamCard } from './StreamCard';
 import { useStreamsData } from './useStreamsData';
@@ -27,6 +35,8 @@ interface FocusTarget {
   streamId: number;
   offerId: number;
   n: number;
+  /** Какую кнопку строки вернуть в фокус: обычное действие или пин. */
+  kind: 'action' | 'pin';
 }
 
 /** Страница потоков кампании. Поведение 1:1 с web/app.js initStreams(). */
@@ -42,11 +52,13 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
     offersMap,
     archive,
     pending,
+    pins,
     campaignName,
     load,
     setStreams,
     setArchive,
     setPending,
+    setPins,
     setOffersMap,
   } = useStreamsData(campaignId);
 
@@ -131,15 +143,17 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
     if (pageError) errorRef.current?.focus();
   }, [pageError]);
 
-  /** После перерисовки вернуть фокус кнопке этой строки. */
-  const focusRow = useCallback((streamId: number, offerId: number) => {
-    setFocusTarget((prev) => ({ streamId, offerId, n: (prev?.n ?? 0) + 1 }));
+  /** После перерисовки вернуть фокус кнопке этой строки: обычной или пина. */
+  const focusRow = useCallback((streamId: number, offerId: number, kind: 'action' | 'pin' = 'action') => {
+    setFocusTarget((prev) => ({ streamId, offerId, kind, n: (prev?.n ?? 0) + 1 }));
   }, []);
 
   useEffect(() => {
     if (!focusTarget) return;
+    const { streamId, offerId, kind } = focusTarget;
+    const attr = kind === 'pin' ? 'data-pin' : 'data';
     const btn = rootRef.current?.querySelector<HTMLButtonElement>(
-      `button[data-stream-id="${focusTarget.streamId}"][data-offer-id="${focusTarget.offerId}"]`,
+      `button[${attr}-stream-id="${streamId}"][${attr}-offer-id="${offerId}"]`,
     );
     btn?.focus();
   }, [focusTarget]);
@@ -279,6 +293,12 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       if (status === 200 && body && Array.isArray(body.pending)) {
         const fresh = body.pending;
         setPending(() => replacePendingForStream(updated, streamId, fresh));
+        // Отменённый pending-add больше не в потоке: сервер сам удаляет пин
+        // этой пары — локально убираем его сразу, чтобы повторное добавление
+        // того же офера рисовалось незапаянным до перезагрузки.
+        if (row.action === 'add') {
+          setPins((prev) => prev.filter((p) => !(p.stream_id === streamId && p.offer_id === offerId)));
+        }
       } else {
         setPending(() => [...updated, row]);
         setStreamErrors((prev) =>
@@ -331,6 +351,61 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       busyDelete(streamId);
     },
     [busyStreams, focusRow, pending, putPending, sending],
+  );
+
+  /* --- Пины веса офера --- */
+
+  /** Кнопка-пин у ячейки «Доля»: фиксирует текущий показанный вес офера.
+   *  Оптимистично обновляет пины и отправляет PUT .../pins полным набором
+   *  пинов потока; при ошибке — откат и текст в строке ошибки потока.
+   *  В Keitaro не ходит: веса применятся по «Отправить в Кейтаро». */
+  const togglePin = useCallback(
+    async (stream: Stream, offerId: number, share: number) => {
+      const streamId = stream.id;
+      if (!streamId || sending || busyStreams.has(streamId)) return;
+
+      busyAdd(streamId);
+      clearStreamError(streamId);
+      const streamPinsBefore = pinsForStream(pins, streamId);
+      const had = streamPinsBefore.some((p) => p.offer_id === offerId);
+      const optimistic: PinRow[] = had
+        ? streamPinsBefore.filter((p) => p.offer_id !== offerId)
+        : [...streamPinsBefore, { stream_id: streamId, offer_id: offerId, share }];
+      setPins((prev) => [...prev.filter((p) => p.stream_id !== streamId), ...optimistic]);
+      focusRow(streamId, offerId, 'pin');
+
+      const { status, body } = await requestJson<{ pins?: PinRow[] }>(
+        `/api/campaigns/${campaignId}/streams/${streamId}/pins`,
+        {
+          method: 'PUT',
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            pins: optimistic.map((p) => ({ offer_id: p.offer_id, share: p.share })),
+          }),
+        },
+      );
+      if (status === 200 && body && Array.isArray(body.pins)) {
+        // Авторитетный набор пинов потока — из ответа (пересобираем stream_id на всякий случай).
+        const fresh: PinRow[] = body.pins.map((p) => ({
+          stream_id: streamId,
+          offer_id: p.offer_id,
+          share: p.share,
+        }));
+        setPins((prev) => [...prev.filter((p) => p.stream_id !== streamId), ...fresh]);
+      } else {
+        setPins((prev) => [...prev.filter((p) => p.stream_id !== streamId), ...streamPinsBefore]);
+        setStreamErrors((prev) =>
+          new Map(prev).set(
+            streamId,
+            pinsErrorText(status, body, 'Не удалось изменить фиксацию веса.'),
+          ),
+        );
+      }
+
+      busyDelete(streamId);
+      focusRow(streamId, offerId, 'pin');
+    },
+    [busyStreams, campaignId, focusRow, pins, sending],
   );
 
   /* --- Предупреждение перед отправкой --- */
@@ -717,6 +792,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
                 stream={stream}
                 pendingRows={pendingForStream(pending, stream.id)}
                 archive={archive}
+                pins={pinsForStream(pins, stream.id)}
                 offersMap={offersMap}
                 sending={sending}
                 busy={busyStreams.has(stream.id)}
@@ -727,6 +803,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
                 onCancel={(st, oid) => void cancelPendingChange(st, oid)}
                 onBringBack={(st, oid) => void bringBackOffer(st, oid)}
                 onAdd={addOffer}
+                onPinToggle={(st, oid, share) => void togglePin(st, oid, share)}
               />
             ))}
           </div>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { acceptJson, detailToText } from '../../api/client';
-import type { ArchivedEntry, Offer, PendingRow, Stream } from '../../api/types';
+import type { ArchivedEntry, Offer, PendingRow, PinRow, Stream } from '../../api/types';
+import pinIcon from '../../../assets/images/pin.png';
+import pinedIcon from '../../../assets/images/pined.png';
 import { useAbortableRequest } from '../../hooks/useAbortableRequest';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -21,6 +23,8 @@ interface Props {
   pendingRows: PendingRow[];
   /** Архив всей кампании (компонент сам берёт свою часть). */
   archive: ArchivedEntry[];
+  /** Пины этого потока (pinsForStream). */
+  pins: PinRow[];
   offersMap: Map<number, Offer | null>;
   sending: boolean;
   busy: boolean;
@@ -34,6 +38,8 @@ interface Props {
   onCancel: (stream: Stream, offerId: number) => void;
   onBringBack: (stream: Stream, offerId: number) => void;
   onAdd: (stream: Stream, offer: Offer) => Promise<void>;
+  /** Кнопка-пин у ячейки «Доля»: share — текущий показанный вес строки. */
+  onPinToggle: (stream: Stream, offerId: number, share: number) => void;
 }
 
 function isDuplicate(stream: Stream, pendingRows: PendingRow[], offerId: number): boolean {
@@ -56,6 +62,7 @@ export function StreamCard({
   stream,
   pendingRows,
   archive,
+  pins,
   offersMap,
   sending,
   busy,
@@ -66,12 +73,13 @@ export function StreamCard({
   onCancel,
   onBringBack,
   onAdd,
+  onPinToggle,
 }: Props) {
   const name = streamName(stream);
   // Архив потока передаётся в computeStreamRows целиком: офер с pending add
   // рисуется на своей архивной позиции (бейдж «вернётся в поток»), а не уезжает наверх.
   const streamArchive = archive.filter((a) => a.stream_id === stream.id);
-  const rows = computeStreamRows(stream, pendingRows, streamArchive, offersMap);
+  const rows = computeStreamRows(stream, pendingRows, streamArchive, offersMap, pins);
   const hasRows =
     (Array.isArray(stream.offers) && stream.offers.length > 0) ||
     pendingRows.length > 0 ||
@@ -117,6 +125,7 @@ export function StreamCard({
                   onDelete={onDelete}
                   onCancel={onCancel}
                   onBringBack={onBringBack}
+                  onPinToggle={onPinToggle}
                 />
               ))}
             </tbody>
@@ -162,6 +171,7 @@ function OfferRow({
   onDelete,
   onCancel,
   onBringBack,
+  onPinToggle,
 }: {
   row: StreamRow;
   archive: ArchivedEntry[];
@@ -173,8 +183,9 @@ function OfferRow({
   onDelete: (stream: Stream, offerId: number) => void;
   onCancel: (stream: Stream, offerId: number) => void;
   onBringBack: (stream: Stream, offerId: number) => void;
+  onPinToggle: (stream: Stream, offerId: number, share: number) => void;
 }) {
-  const { stream, entry, offer, share, pendingAction, isArchived, reason } = row;
+  const { stream, entry, offer, share, pinned, pendingAction, isArchived, reason } = row;
   const streamId = stream.id;
   const offerId = entry.offer_id;
   const disabled = !streamId || sending || busy;
@@ -182,6 +193,12 @@ function OfferRow({
 
   const payout = offer ? Number(offer.payout_value) : 0;
   const payoutText = payout ? [payout, offer?.payout_currency].filter(Boolean).join(' ') : '';
+
+  // Пин недоступен: архивная строка, к удалению, доля не определена.
+  const canPin = !isArchived && pendingAction !== 'remove' && share != null;
+  const pinLabel = pinned
+    ? `Снять фиксацию веса офера #${offerId} в потоке ${name}`
+    : `Зафиксировать вес офера #${offerId} в потоке ${name}`;
 
   return (
     <tr className={isArchived ? table.archivedRow : pendingAction ? table.pendingRow : ''}>
@@ -211,8 +228,23 @@ function OfferRow({
           <Badge kind="pending">{pendingAddBadgeText(streamId, offerId, archive)}</Badge>
         )}
       </td>
-      <td className={table.num} data-label="Доля">
+      <td className={`${table.num} ${s.shareCell}`} data-label="Доля">
         {share == null ? '—' : `${share}%`}
+        {canPin && (
+          <button
+            type="button"
+            className={s.pinBtn}
+            aria-pressed={pinned}
+            aria-label={pinLabel}
+            title={pinned ? `Вес зафиксирован (${share}%): не меняется при добавлении оферов` : `Зафиксировать вес ${share}%`}
+            disabled={disabled}
+            data-pin-stream-id={streamId}
+            data-pin-offer-id={offerId}
+            onClick={() => onPinToggle(stream, offerId, share)}
+          >
+            <img src={pinned ? pinedIcon : pinIcon} alt="" width="16" height="16" />
+          </button>
+        )}
       </td>
       <td data-label="Статус">
         {isArchived

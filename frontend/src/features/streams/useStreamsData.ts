@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { acceptJson, detailToText, requestJson } from '../../api/client';
 import { offersForbiddenBanner } from './errorTexts';
-import type { ArchivedEntry, CampaignDetail, Offer, PendingRow, Stream } from '../../api/types';
+import type { ArchivedEntry, CampaignDetail, Offer, PendingRow, PinRow, Stream } from '../../api/types';
 
 export type PageError = {
   text: string;
@@ -36,11 +36,14 @@ export interface StreamsData {
   offersMap: Map<number, Offer | null>;
   archive: ArchivedEntry[];
   pending: PendingRow[];
+  /** Зафиксированные веса (пины) по всем потокам кампании. */
+  pins: PinRow[];
   campaignName: string | null;
   load: (opts?: { refresh?: boolean }) => Promise<LoadOutcome>;
   setStreams: (update: (prev: Stream[]) => Stream[]) => void;
   setArchive: (update: (prev: ArchivedEntry[]) => ArchivedEntry[]) => void;
   setPending: (update: (prev: PendingRow[]) => PendingRow[]) => void;
+  setPins: (update: (prev: PinRow[]) => PinRow[]) => void;
   setOffersMap: (update: (prev: Map<number, Offer | null>) => Map<number, Offer | null>) => void;
 }
 
@@ -62,6 +65,7 @@ export function useStreamsData(campaignId: string): StreamsData {
   const [offersMap, setOffersMap] = useState<Map<number, Offer | null>>(new Map());
   const [archive, setArchive] = useState<ArchivedEntry[]>([]);
   const [pending, setPending] = useState<PendingRow[]>([]);
+  const [pins, setPins] = useState<PinRow[]>([]);
   const [campaignName, setCampaignName] = useState<string | null>(null);
   const seqRef = useRef(0);
 
@@ -95,17 +99,20 @@ export function useStreamsData(campaignId: string): StreamsData {
 
       // Восстановление жёлтых строк из pending: перезагрузка не воскрешает
       // удалённые оферы и не теряет черновики. 404 = старый бэкенд без
-      // pending-роутов — считаем изменений нет.
+      // pending-роутов — считаем изменений нет. Пины приходят тем же ответом:
+      // старый бэкенд их не отдаёт — считаем пинов нет.
       let pendingData: PendingRow[] = [];
-      const pendingRes = await requestJson<{ pending?: PendingRow[] }>(
+      const pendingRes = await requestJson<{ pending?: PendingRow[]; pins?: PinRow[] }>(
         `/api/campaigns/${campaignId}/streams/pending`,
         { headers: acceptJson },
       );
       if (pendingRes.status === 200 && pendingRes.body && Array.isArray(pendingRes.body.pending)) {
         pendingData = pendingRes.body.pending;
         setPending(pendingData);
+        setPins(Array.isArray(pendingRes.body.pins) ? pendingRes.body.pins : []);
       } else if (!refresh) {
         setPending([]);
+        setPins([]);
       }
 
       // Ответ на устаревшую загрузку (повторная «Повторить» пришла раньше) — молча бросаем.
@@ -199,11 +206,13 @@ export function useStreamsData(campaignId: string): StreamsData {
     offersMap,
     archive,
     pending,
+    pins,
     campaignName,
     load,
     setStreams: (update) => setStreams(update),
     setArchive: (update) => setArchive(update),
     setPending: (update) => setPending(update),
+    setPins: (update) => setPins(update),
     setOffersMap: (update) => setOffersMap(update),
   };
 }

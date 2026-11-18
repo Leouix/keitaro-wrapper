@@ -56,6 +56,23 @@ export interface PendingRow {
   created_at?: string | null;
 }
 
+/** Зафиксированный вес офера в потоке (кнопка-пин). */
+export interface PinRow {
+  stream_id: number;
+  offer_id: number;
+  share: number;
+}
+
+/** Тело PUT /api/campaigns/{cid}/streams/{sid}/pins — полный набор пинов потока. */
+export interface PinsPayload {
+  pins: Array<{ offer_id: number; share: number }>;
+}
+
+/** Ответ PUT .../pins; поле pins в GET .../streams/pending имеет ту же форму. */
+export interface PinsResult {
+  pins?: PinRow[] | null;
+}
+
 export interface Offer {
   id: number;
   name?: string | null;

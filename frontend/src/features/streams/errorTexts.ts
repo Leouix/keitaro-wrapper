@@ -30,6 +30,16 @@ export function pendingChangeErrorText(status: number, body: unknown, fallback: 
   return detailToText(detail, `${fallback} (код ${status}).`);
 }
 
+/** Тексты ошибок PUT .../pins (кнопка-пин веса офера). */
+export function pinsErrorText(status: number, body: unknown, fallback: string): string {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (status === 0) return 'Сеть недоступна, попробуйте ещё раз.';
+  // 404 у PUT pins — бэкенд без роутов пинов: фиксация веса пока недоступна.
+  if (status === 404) return 'Сервер пока не поддерживает фиксацию веса.';
+  if (status === 400) return detailToText(detail, fallback);
+  return detailToText(detail, `${fallback} (код ${status}).`);
+}
+
 /** Тексты ошибок кнопки «Обновить из Кейтаро» (повторный GET /streams). */
 export function refreshErrorText(status: number, body: unknown): string {
   const detail = (body as { detail?: unknown } | null)?.detail;
