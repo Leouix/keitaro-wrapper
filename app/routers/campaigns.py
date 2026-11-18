@@ -8,22 +8,11 @@ from ..constants import CAMPAIGN_LIST_FIELDS
 from ..db import get_db
 from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
-from ..models import CampaignCache, StreamOfferState, utcnow
+from ..models import StreamOfferState, utcnow
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
-
-
-def _upsert(db: Session, campaigns: list[dict]):
-    for c in campaigns:
-        row = db.get(CampaignCache, c.get("id"))
-        if row is None:
-            db.add(CampaignCache(keitaro_id=c["id"], name=str(c.get("name", "")), payload=c))
-        else:
-            row.name = str(c.get("name", row.name))
-            row.payload = c
-    db.commit()
 
 
 # Whitelist полей кампании — в app/constants.py (граница безопасности,
@@ -64,19 +53,15 @@ async def list_campaigns(
 @router.get("/{campaign_id}")
 async def get_campaign(
     campaign_id: int,
-    db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
     """Детальная кампания для фронта: только whitelisted поля (без token).
-    Кэш при недоступности Keitaro — в той же плоской форме + stale=true."""
+    Отдаём только живые данные из Keitaro, кэша нет: при недоступности —
+    503, stale-ответов не бывает."""
     try:
         data = await keitaro.get_campaign(campaign_id)
     except KeitaroUnavailable:
-        row = db.get(CampaignCache, campaign_id)
-        if row is None:
-            raise HTTPException(503, "Keitaro unavailable and no cached data")
-        return {**_whitelist(row.payload), "stale": True}
-    _upsert(db, [data])
+        raise HTTPException(503, "Keitaro unavailable")
     return _whitelist(data)
 
 

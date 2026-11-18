@@ -12,7 +12,6 @@ from app.db import Base, get_db
 from app.deps import get_keitaro_with_key
 from app.keitaro import KeitaroClient
 from app.main import app
-from app.models import CampaignCache
 
 TEST_KEY = "dummy-test-key-not-a-real-secret"
 

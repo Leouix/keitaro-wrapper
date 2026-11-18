@@ -102,7 +102,7 @@ export function useStreamsData(campaignId: string): StreamsData {
       // Ответ на устаревшую загрузку (повторная «Повторить» пришла раньше) — молча бросаем.
       if (mySeq !== seqRef.current) return false;
 
-      // body.name || body.campaign?.name — stale-ответ кладёт кампанию внутрь.
+      // body.name || body.campaign?.name — защитный фолбэк на campaign.name оставлен для совместимости со старым бэкендом, актуальный бэкенд его не использует.
       const campaignBody = campaignRes.ok ? campaignRes.body : null;
       const name =
         campaignBody && (campaignBody.name || (campaignBody.campaign && campaignBody.campaign.name));

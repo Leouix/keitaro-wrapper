@@ -20,7 +20,7 @@ export interface Campaign {
   updated_at?: string | null;
 }
 
-/** Ответ GET /api/campaigns/{id}: свежий ответ отдаёт name, stale кладёт кампанию внутрь. */
+/** Ответ GET /api/campaigns/{id}: плоский, name приходит только из живого ответа Keitaro; при его недоступности бэкенд отвечает 503. */
 export interface CampaignDetail {
   name?: string | null;
   campaign?: { name?: string | null } | null;
