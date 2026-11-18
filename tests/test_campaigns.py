@@ -1,7 +1,7 @@
 import httpx
 
 from app.models import CampaignCache
-from app.routers.campaigns import LIST_FIELDS
+from app.constants import CAMPAIGN_LIST_FIELDS as LIST_FIELDS
 
 from tests.conftest import (
     CAMPAIGNS,

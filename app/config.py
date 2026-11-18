@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -14,8 +14,9 @@ class Settings(BaseSettings):
     keitaro_retries: int = 1
     database_url: str = "sqlite:///./keitaro_wrapper.db"
 
-    class Config:
-        env_file = ".env"
+    # SettingsConfigDict вместо class Config: class-based конфиг помечен
+    # deprecated в Pydantic V2 и будет удалён в V3.
+    model_config = SettingsConfigDict(env_file=".env")
 
 
 @lru_cache

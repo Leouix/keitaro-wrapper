@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as FPath
 from sqlalchemy.orm import Session
 
+from ..constants import CAMPAIGN_LIST_FIELDS
 from ..db import get_db
 from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
@@ -25,14 +26,12 @@ def _upsert(db: Session, campaigns: list[dict]):
     db.commit()
 
 
-# Поля кампании, разрешённые к выдаче списком в браузер.
-# Всё остальное (token, postbacks, domain, ...) из ответа Keitaro вырезается:
-# в живом списке у каждой кампании есть token, отдавать его нельзя.
-LIST_FIELDS = ("id", "name", "alias", "state", "group", "updated_at")
+# Whitelist полей кампании — в app/constants.py (граница безопасности,
+# общая для всех роутеров).
 
 
 def _whitelist(c: dict) -> dict:
-    return {field: c.get(field) for field in LIST_FIELDS}
+    return {field: c.get(field) for field in CAMPAIGN_LIST_FIELDS}
 
 
 @router.get("")

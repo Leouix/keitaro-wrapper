@@ -24,7 +24,8 @@ Keitaro уходит одним PUT по кнопке «Отправить в К
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Path as FPath
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -165,7 +166,7 @@ def _check_landings_schema(stream: dict) -> None:
 
 @router.post("/{stream_id}/offers")
 async def add_offer_to_stream(
-    stream_id: int = Path(gt=0),
+    stream_id: int = FPath(gt=0),
     body: OfferAddBody = ...,
     db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
@@ -235,8 +236,8 @@ async def add_offer_to_stream(
 
 @router.delete("/{stream_id}/offers/{offer_id}")
 async def remove_offer_from_stream(
-    stream_id: int = Path(gt=0),
-    offer_id: int = Path(gt=0),
+    stream_id: int = FPath(gt=0),
+    offer_id: int = FPath(gt=0),
     db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
@@ -338,7 +339,7 @@ def _pending_payload(rows: list[StreamOfferPending]) -> list[dict]:
 
 @pending_router.get("/pending")
 async def get_campaign_streams_pending(
-    campaign_id: int = Path(gt=0),
+    campaign_id: int = FPath(gt=0),
     db: Session = Depends(get_db),
 ):
     """Ожидающие изменения кампании: только локальная БД — без API-ключа
@@ -354,8 +355,8 @@ async def get_campaign_streams_pending(
 
 @pending_router.put("/{stream_id}/pending")
 async def put_stream_pending(
-    campaign_id: int = Path(gt=0),
-    stream_id: int = Path(gt=0),
+    campaign_id: int = FPath(gt=0),
+    stream_id: int = FPath(gt=0),
     body: PendingBody = ...,
     db: Session = Depends(get_db),
 ):
@@ -463,8 +464,8 @@ def _clear_pending_quiet(db: Session, *, stream_id: int) -> None:
 
 @pending_router.post("/{stream_id}/apply")
 async def apply_stream_pending(
-    campaign_id: int = Path(gt=0),
-    stream_id: int = Path(gt=0),
+    campaign_id: int = FPath(gt=0),
+    stream_id: int = FPath(gt=0),
     db: Session = Depends(get_db),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):

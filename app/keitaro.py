@@ -45,6 +45,21 @@ class KeitaroClient:
 
     @staticmethod
     def _handle(resp: httpx.Response):
+        """Единая таблица маппинга ответа Keitaro → HTTP (фаза 3).
+
+        Вся логика ошибок живёт только здесь — роутеры не маппят коды
+        сами, они лишь переводят KeitaroUnavailable (сеть/5xx после
+        ретряев) в 502:
+        - 401/403            → 403 «Keitaro permission denied: <текст Keitaro>»
+                               (текст доходит до фронта как есть — честно
+                               видно «нет прав», а не «не удалось загрузить»);
+        - 404                → 404 «Not found in Keitaro»;
+        - прочие 4xx/5xx     → 502 «Keitaro returned <code>»;
+        - не-JSON тело       → 502 «Keitaro returned non-JSON response»;
+        - 200 + {"error": …} → 403 (часть сборок отдаёт ошибку с 200).
+        Секреты (ключ, заголовки) в сообщения не попадают: только текст
+        ошибки от Keitaro.
+        """
         status = resp.status_code
         if status in (401, 403):
             # 401/403 от Keitaro — всегда проблема ключа или прав.

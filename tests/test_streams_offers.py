@@ -69,7 +69,10 @@ def test_offers_permission_json_403(client):
     c, _ = make_app_client(handler, extra_overrides={get_keitaro_with_key: lambda: make_keitaro(handler)})
     r = c.get("/api/offers/25327")
     assert r.status_code == 403
-    assert "permission" in r.json()["detail"]
+    # Регрессия «ключ без права Offers»: текст Keitaro доходит до фронта
+    # как есть, с префиксом 'Keitaro permission denied: ' — видно реальную
+    # причину («You have no permission…»), а не безликое «не удалось загрузить».
+    assert r.json()["detail"] == f"Keitaro permission denied: {PERMISSION_ERROR}"
     app.dependency_overrides.clear()
 
 

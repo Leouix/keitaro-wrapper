@@ -1,7 +1,8 @@
 import asyncio
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Path as FPath
 
 from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
@@ -88,7 +89,7 @@ async def get_offers_batch(
 
 @router.get("/{offer_id}")
 async def get_offer(
-    offer_id: int = Path(gt=0),
+    offer_id: int = FPath(gt=0),
     keitaro: KeitaroClient = Depends(get_keitaro_with_key),
 ):
     # Тело — ровно ответ Keitaro; 404/403 маппит KeitaroClient,
