@@ -36,9 +36,6 @@
   transition: background-color var(--speed) var(--ease-out);
 }
 
-.table tbody tr:hover {
-  background: var(--row-hover);
-}
 
 .table tbody tr:last-child td {
   border-bottom: none;
@@ -90,10 +87,6 @@
 }
 
 .pendingRow {
-  background: var(--warn-bg);
-}
-
-.pendingRow:hover {
   background: var(--warn-row);
 }
 
