@@ -90,7 +90,7 @@ export interface CampaignOptions {
 export interface CreateCampaignPayload {
   name: string;
   geos: string[];
-  offer_id: number;
+  offer_ids: number[];
   domain_id: number;
   group_id: number;
   traffic_source_id: number;

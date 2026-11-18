@@ -69,6 +69,7 @@ class FakeKeitaro:
         fail_archive: bool = False,
         drop_offer: bool = False,
         hide_offer_in_response: bool = False,
+        drop_offer_ids: set[int] | None = None,
     ):
         self.requests: list[tuple[str, str, dict | None]] = []
         self.request_objs: list[httpx.Request] = []
@@ -87,6 +88,8 @@ class FakeKeitaro:
         # но оффер реально пристал (перепроверка через список потоков).
         self.drop_offer = drop_offer
         self.hide_offer_in_response = hide_offer_in_response
+        # drop_offer_ids: Keitaro пристал только к части офферов потока.
+        self.drop_offer_ids = drop_offer_ids or set()
 
     # --- helpers -------------------------------------------------------------
 
@@ -184,11 +187,27 @@ class FakeKeitaro:
             stream = dict(body or {})
             stream["id"] = self.next_stream_id
             self.next_stream_id += 1
-            if step == "offer_stream" and (self.drop_offer or self.hide_offer_in_response):
-                if self.hide_offer_in_response:
-                    self.streams[stream["id"]] = stream  # пристал, но в ответе не показан
+            if step == "offer_stream" and (
+                self.drop_offer
+                or self.hide_offer_in_response
+                or self.drop_offer_ids
+            ):
+                if self.drop_offer:
+                    stored = dict(stream, offers=[])  # молча без оферов
+                elif self.drop_offer_ids:
+                    # Пристали не все: отсутствующие не попадают ни в
+                    # ответ, ни в перепроверку списка потоков.
+                    stored = dict(
+                        stream,
+                        offers=[
+                            o
+                            for o in (stream.get("offers") or [])
+                            if o.get("offer_id") not in self.drop_offer_ids
+                        ],
+                    )
                 else:
-                    self.streams[stream["id"]] = dict(stream, offers=[])  # молча без офера
+                    stored = stream  # пристал, но в ответе не показан
+                self.streams[stream["id"]] = stored
                 response_stream = {k: v for k, v in stream.items() if k != "offers"}
                 return httpx.Response(200, json=response_stream)
             self.streams[stream["id"]] = stream
@@ -565,6 +584,122 @@ def test_archived_campaign_same_name_is_not_duplicate():
     fake.campaigns[214213]["state"] = "deleted"
     r2 = c.post("/api/campaigns", json=create_body())
     assert r2.status_code == 201, r2.text
+
+
+def test_two_offers_payload_order_and_shares():
+    """Два оффера: порядок ввода сохранён, доли 50/50, сумма 100."""
+    fake = FakeKeitaro()
+    c = fake_client(fake)
+    r = c.post("/api/campaigns", json=create_body(offer_ids=[18814, 18813]))
+    assert r.status_code == 201, r.text
+    offer_stream = fake.calls("POST", "/streams")[1][2]
+    assert offer_stream["type"] == "default"
+    assert offer_stream["name"] == "Offers"
+    assert offer_stream["offers"] == [
+        {"offer_id": 18814, "share": 50},
+        {"offer_id": 18813, "share": 50},
+    ]
+
+
+def test_three_offers_shares_34_33_33_sum_100():
+    fake = FakeKeitaro()
+    c = fake_client(fake)
+    r = c.post("/api/campaigns", json=create_body(offer_ids=[7, 8, 9]))
+    assert r.status_code == 201, r.text
+    offers = fake.calls("POST", "/streams")[1][2]["offers"]
+    assert offers == [
+        {"offer_id": 7, "share": 34},
+        {"offer_id": 8, "share": 33},
+        {"offer_id": 9, "share": 33},
+    ]
+    assert sum(o["share"] for o in offers) == 100
+
+
+def test_offer_ids_single_gives_share_100():
+    fake = FakeKeitaro()
+    c = fake_client(fake)
+    r = c.post("/api/campaigns", json=create_body(offer_ids=[18813]))
+    assert r.status_code == 201, r.text
+    offers = fake.calls("POST", "/streams")[1][2]["offers"]
+    assert offers == [{"offer_id": 18813, "share": 100}]
+
+
+def test_offer_ids_dedupe_preserve_order():
+    fake = FakeKeitaro()
+    c = fake_client(fake)
+    r = c.post("/api/campaigns", json=create_body(offer_ids=[7, 3, 7, 5, 3]))
+    assert r.status_code == 201, r.text
+    offers = fake.calls("POST", "/streams")[1][2]["offers"]
+    assert offers == [
+        {"offer_id": 7, "share": 34},
+        {"offer_id": 3, "share": 33},
+        {"offer_id": 5, "share": 33},
+    ]
+
+
+def test_offer_ids_wins_over_offer_id():
+    """Пришли оба поля — offer_ids выигрывает, offer_id игнорируется."""
+    fake = FakeKeitaro()
+    c = fake_client(fake)
+    r = c.post(
+        "/api/campaigns", json=create_body(offer_id=18813, offer_ids=[42, 43])
+    )
+    assert r.status_code == 201, r.text
+    offers = fake.calls("POST", "/streams")[1][2]["offers"]
+    assert offers == [
+        {"offer_id": 42, "share": 50},
+        {"offer_id": 43, "share": 50},
+    ]
+
+
+def test_offer_ids_validation_errors_never_reach_keitaro():
+    fake = FakeKeitaro()
+    c = fake_client(fake)
+    bad = [
+        create_body(offer_ids=[]),
+        create_body(offer_ids=[0]),
+        create_body(offer_ids=[-1]),
+        create_body(offer_ids=["abc"]),  # не-число
+        create_body(offer_ids=[f"{i}" for i in range(1, 22)]),  # 21 уникальный оффер
+        create_body(offer_id=None, offer_ids=None),  # ни одного оффера
+    ]
+    for body in bad:
+        r = c.post("/api/campaigns", json=body)
+        assert r.status_code == 422, (body.get("offer_ids"), r.status_code)
+    assert fake.requests == []
+
+
+def test_one_of_three_offers_missing_compensates():
+    """Из трёх офферов пристали два: fail-closed — архив кампании,
+    502 с шагом и перечнем отсутствующих, enable не звался."""
+    fake = FakeKeitaro(drop_offer_ids={8})
+    c = fake_client(fake)
+    r = c.post("/api/campaigns", json=create_body(offer_ids=[7, 8, 9]))
+    assert r.status_code == 502, r.text
+    detail = r.json()["detail"]
+    assert "offer stream" in detail
+    assert "Offer 8 was not attached to the stream" in detail
+    campaign_id = fake.created_ids[0]
+    assert fake.calls_on_campaign("DELETE", campaign_id) != []
+    assert fake.campaigns[campaign_id]["state"] == "deleted"
+    assert fake.enable_calls == []
+    # перепроверка была ровно одна
+    rechecks = [
+        req
+        for req in fake.request_objs
+        if req.method == "GET" and req.url.path.endswith(f"{API_BASE}/streams")
+    ]
+    assert len(rechecks) == 1
+
+
+def test_all_three_offers_attached_success():
+    fake = FakeKeitaro()
+    c = fake_client(fake)
+    r = c.post("/api/campaigns", json=create_body(offer_ids=[7, 8, 9]))
+    assert r.status_code == 201, r.text
+    assert fake.enable_calls != []
+    assert len(fake.enable_calls) == 1
+    assert not any(req[0] == "DELETE" for req in fake.requests)
 
 
 def test_keitaro_client_write_post_not_retried_unit_level():

@@ -31,6 +31,7 @@ from fastapi import Path as FPath
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
+from ..constants import equal_shares
 from ..db import get_db
 from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
@@ -70,8 +71,7 @@ def _scaled_to_100(values: list[int]) -> list[int]:
     """
     total = sum(values)
     if total <= 0:
-        base, rest = divmod(100, len(values))
-        return [base + (1 if i < rest else 0) for i in range(len(values))]
+        return equal_shares(len(values))
     exact = [v * 100 / total for v in values]
     out = [int(x) for x in exact]
     leftover = 100 - sum(out)
@@ -107,13 +107,13 @@ def reshare(offers: list[dict], *, rescale: bool = False) -> list[dict]:
         if shares:
             default = round(sum(shares.values()) / len(shares))
         else:
-            base, rest = divmod(100, len(offers))
+            split = equal_shares(len(offers))
             default = None
         for i, o in enumerate(unknown):
             if default is not None:
                 shares[o["offer_id"]] = default
             else:
-                shares[o["offer_id"]] = base + (1 if i < rest else 0)
+                shares[o["offer_id"]] = split[i]
     return [
         {
             "offer_id": o["offer_id"],

@@ -33,6 +33,11 @@ function defaultFetch() {
     if (url === '/api/offers/18813') return json(200, { id: 18813, name: 'Test offer', state: 'active' });
     if (url === '/api/offers/40404') return json(404, { detail: 'Offer not found' });
     if (url === '/api/offers/40303') return json(403, { detail: 'Keitaro permission denied: offers' });
+    if (url === '/api/offers/50505') return json(502, null);
+    {
+      const m = url.match(/^\/api\/offers\/(\d+)$/);
+      if (m) return json(200, { id: Number(m[1]), name: `Offer ${m[1]}`, state: 'active' });
+    }
     return json(200, {});
   });
 }
@@ -53,7 +58,12 @@ function renderPage(fetchMock = defaultFetch()) {
 
 const nameInput = () => document.getElementById('campaign-name') as HTMLInputElement;
 const geoInput = () => document.getElementById('geo-input') as HTMLInputElement;
-const offerInput = () => document.getElementById('offer-id') as HTMLInputElement;
+const offerInput = () => document.getElementById('offer-input') as HTMLInputElement;
+const offerChips = () => document.querySelector('[aria-label="Выбранные офферы"]') as HTMLElement | null;
+const offerHint = () => document.getElementById('offer-hint') as HTMLElement;
+const offerWarns = () => document.querySelector('p[class*="warnLine"]') as HTMLElement | null;
+const offerCalls = (mock: ReturnType<typeof vi.fn>, id: number) =>
+  mock.mock.calls.filter(([u]) => u === `/api/offers/${id}`);
 const domainSelect = () => document.getElementById('campaign-domain') as HTMLSelectElement;
 const groupSelect = () => document.getElementById('campaign-group') as HTMLSelectElement;
 const sourceSelect = () => document.getElementById('campaign-source') as HTMLSelectElement;
@@ -78,6 +88,7 @@ async function fillValidForm() {
   fireEvent.change(geoInput(), { target: { value: 'KZ' } });
   fireEvent.keyDown(geoInput(), { key: 'Enter' });
   fireEvent.change(offerInput(), { target: { value: '18813' } });
+  fireEvent.keyDown(offerInput(), { key: 'Enter' });
 }
 
 beforeEach(() => {
@@ -200,13 +211,29 @@ describe('NewCampaignPage — валидация', () => {
     expect(postCalls).toHaveLength(0);
   });
 
-  it('ID оффера не число: ошибка, POST не уходит', async () => {
-    renderPage();
-    await fillValidForm();
+  it('оффер не число или ноль: inline-ошибка, без запроса; чип не добавляется', async () => {
+    const mock = renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+
+    fireEvent.change(offerInput(), { target: { value: 'abc' } });
+    await screen.findByText('Введите ID оффера — положительное число.', {}, { timeout: 3000 });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()).toBeNull();
+    expect(offerCalls(mock, 0)).toHaveLength(0);
+
     fireEvent.change(offerInput(), { target: { value: '0' } });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerHint().textContent).toContain('Введите ID оффера — положительное число.');
+    expect(offerChips()).toBeNull();
+
+    // остальная форма валидна, чтобы ошибка остановилась именно на офферах
+    fireEvent.change(nameInput(), { target: { value: 'leo_kz' } });
+    fireEvent.change(geoInput(), { target: { value: 'KZ' } });
+    fireEvent.keyDown(geoInput(), { key: 'Enter' });
+
     fireEvent.click(submitBtn());
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Укажите ID оффера — положительное число.');
+    expect(alert.textContent).toBe('Укажите хотя бы один оффер.');
     expect(postCalls).toHaveLength(0);
   });
 });
@@ -247,34 +274,192 @@ describe('NewCampaignPage — гео-чипы', () => {
   });
 });
 
-describe('NewCampaignPage — проверка оффера', () => {
-  it('успешная проверка показывает имя и статус', async () => {
+describe('NewCampaignPage — офферы-чипы', () => {
+  it('кнопки «Проверить» нет; проверка при вводе без кнопки', async () => {
     renderPage();
-    await fillValidForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }));
-    const hint = await screen.findByText(/Оффер 18813: Test offer — active/, {}, { timeout: 3000 });
-    expect(hint).toBeTruthy();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+    expect(screen.queryByRole('button', { name: 'Проверить' })).toBeNull();
+    expect(screen.queryByText('Проверить')).toBeNull();
   });
 
-  it('403 — предупреждение, POST не блокируется', async () => {
-    renderPage();
-    await fillValidForm();
-    fireEvent.change(offerInput(), { target: { value: '40303' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }));
-    const hint = await screen.findByText(/Нет прав у ключа на этот оффер.*Создание кампании не блокируем\./s, {}, { timeout: 3000 });
-    expect(hint.textContent).toContain('Keitaro permission denied: offers');
+  it('добавление после дебаунс-проверки: подсказка с именем и статусом, запрос ровно один на id', async () => {
+    const mock = renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
 
+    fireEvent.change(offerInput(), { target: { value: '18813' } });
+    await screen.findByText(/Оффер 18813: Test offer — active/, {}, { timeout: 3000 });
+    expect(offerCalls(mock, 18813)).toHaveLength(1);
+
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()?.textContent).toContain('18813');
+    expect(offerChips()?.textContent).toContain('Test offer');
+    expect(offerChips()?.textContent).toContain('100%');
+
+    // пережидаем дебаунс после очистки поля: повторного запроса нет
+    await new Promise((r) => setTimeout(r, 700));
+    expect(offerCalls(mock, 18813)).toHaveLength(1);
+  });
+
+  it('404 — оффер не добавляется, при отправке блокирующая ошибка', async () => {
+    const mock = renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+    fireEvent.change(offerInput(), { target: { value: '40404' } });
+    await screen.findByText('Оффер 40404 не найден в Keitaro.', {}, { timeout: 3000 });
+    expect(offerCalls(mock, 40404)).toHaveLength(1);
+
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()).toBeNull();
+
+    fireEvent.change(nameInput(), { target: { value: 'leo_kz' } });
+    fireEvent.change(geoInput(), { target: { value: 'KZ' } });
+    fireEvent.keyDown(geoInput(), { key: 'Enter' });
+    fireEvent.click(submitBtn());
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Укажите хотя бы один оффер.');
+    expect(postCalls).toHaveLength(0);
+  });
+
+  it('403 — добавляется с предупреждением, создание не блокируется', async () => {
+    renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+    fireEvent.change(offerInput(), { target: { value: '40303' } });
+    await screen.findByText(/Оффер 40303: нет прав у ключа/, {}, { timeout: 3000 });
+
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()?.textContent).toContain('40303');
+    expect(offerWarns()?.textContent).toContain('40303 — нет прав у ключа, проверит сервер');
+
+    fireEvent.change(nameInput(), { target: { value: 'leo_kz' } });
+    fireEvent.change(geoInput(), { target: { value: 'KZ' } });
+    fireEvent.keyDown(geoInput(), { key: 'Enter' });
     fireEvent.click(submitBtn());
     await screen.findByText('Кампания создана', {}, { timeout: 3000 });
     expect(postCalls).toHaveLength(1);
+    expect(postCalls[0].body).toMatchObject({ offer_ids: [40303] });
   });
 
-  it('404 — оффер не найден', async () => {
+  it('502 — добавляется с предупреждением «добавлен без проверки»', async () => {
+    renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+    fireEvent.change(offerInput(), { target: { value: '50505' } });
+    await screen.findByText(/Оффер 50505: Keitaro недоступен/, {}, { timeout: 3000 });
+
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()?.textContent).toContain('50505');
+    expect(offerWarns()?.textContent).toContain('50505 — Keitaro недоступен, добавлен без проверки');
+  });
+
+  it('дубль игнорируется с короткой подсказкой, запрос не повторяется', async () => {
+    const mock = renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+
+    fireEvent.change(offerInput(), { target: { value: '18813' } });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()?.querySelectorAll('li')).toHaveLength(1);
+
+    fireEvent.change(offerInput(), { target: { value: '18813' } });
+    await screen.findByText('Оффер 18813 уже добавлен.', {}, { timeout: 3000 });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerHint().textContent).toContain('уже добавлен');
+    expect(offerChips()?.querySelectorAll('li')).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 700));
+    expect(offerCalls(mock, 18813)).toHaveLength(1);
+  });
+
+  it('максимум 20 офферов', async () => {
+    renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+
+    fireEvent.change(offerInput(), {
+      target: { value: '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20' },
+    });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()?.querySelectorAll('li')).toHaveLength(20);
+
+    fireEvent.change(offerInput(), { target: { value: '21' } });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerHint().textContent).toContain('Не больше 20 офферов.');
+    expect(offerChips()?.querySelectorAll('li')).toHaveLength(20);
+  });
+
+  it('доли 50/50 при двух, пересчёт после удаления; крестик и Backspace удаляют', async () => {
+    const mock = renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+
+    fireEvent.change(offerInput(), { target: { value: '18813,18814' } });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    const chips = () => offerChips()!.querySelectorAll('li');
+    expect(chips()).toHaveLength(2);
+    expect(chips()[0].textContent).toContain('50%');
+    expect(chips()[1].textContent).toContain('50%');
+    expect(screen.getByText('Веса равные, сумма 100.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Убрать оффер 18814' }));
+    expect(chips()).toHaveLength(1);
+    expect(chips()[0].textContent).toContain('100%');
+    expect(screen.queryByText('Веса равные, сумма 100.')).toBeNull();
+
+    // повторное добавление удалённого: имя возвращается из кэша
+    fireEvent.change(offerInput(), { target: { value: '18814' } });
+    await screen.findByText(/Оффер 18814: Offer 18814 — active/, {}, { timeout: 3000 });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(chips()).toHaveLength(2);
+    expect(chips()[1].textContent).toContain('Offer 18814');
+    expect(chips()[1].textContent).toContain('50%');
+    // запрос по 18814 был только один — при повторном добавлении нового нет
+    expect(offerCalls(mock, 18814)).toHaveLength(1);
+
+    fireEvent.change(offerInput(), { target: { value: '' } });
+    fireEvent.keyDown(offerInput(), { key: 'Backspace' });
+    expect(chips()).toHaveLength(1);
+  });
+
+  it('повторное добавление удалённого оффера — имя/статус из кэша, без нового запроса', async () => {
+    const mock = renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+
+    fireEvent.change(offerInput(), { target: { value: '18813' } });
+    await screen.findByText(/Оффер 18813: Test offer — active/, {}, { timeout: 3000 });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()?.textContent).toContain('Test offer');
+    fireEvent.click(screen.getByRole('button', { name: 'Убрать оффер 18813' }));
+    expect(offerChips()).toBeNull();
+
+    // снова тот же ID: подсказка из кэша и чип с именем, запрос не повторяется
+    fireEvent.change(offerInput(), { target: { value: '18813' } });
+    await screen.findByText(/Оффер 18813: Test offer — active/, {}, { timeout: 3000 });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    expect(offerChips()?.querySelectorAll('li')).toHaveLength(1);
+    expect(offerChips()?.textContent).toContain('Test offer');
+    expect(offerChips()?.textContent).toContain('100%');
+    await new Promise((r) => setTimeout(r, 700));
+    expect(offerCalls(mock, 18813)).toHaveLength(1);
+  });
+
+  it('доли 34/33/33 при трёх офферах (остаток — первому)', async () => {
+    renderPage();
+    await waitFor(() => expect(domainSelect().value).toBe('1813'), { timeout: 3000 });
+
+    fireEvent.change(offerInput(), { target: { value: '18813, 18814, 18815' } });
+    fireEvent.keyDown(offerInput(), { key: 'Enter' });
+    const chips = offerChips()!.querySelectorAll('li');
+    expect(chips).toHaveLength(3);
+    expect(chips[0].textContent).toContain('34%');
+    expect(chips[1].textContent).toContain('33%');
+    expect(chips[2].textContent).toContain('33%');
+    expect(screen.getByText('Веса равные, сумма 100.')).toBeTruthy();
+  });
+
+  it('без офферов отправка блокируется', async () => {
     renderPage();
     await fillValidForm();
-    fireEvent.change(offerInput(), { target: { value: '40404' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }));
-    await screen.findByText('Оффер 40404 не найден в Keitaro.', {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Убрать оффер 18813' }));
+    expect(offerChips()).toBeNull();
+
+    fireEvent.click(submitBtn());
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Укажите хотя бы один оффер.');
+    expect(postCalls).toHaveLength(0);
   });
 });
 
@@ -288,7 +473,7 @@ describe('NewCampaignPage — сабмит', () => {
     expect(postCalls[0].body).toEqual({
       name: 'leo_kz',
       geos: ['KZ'],
-      offer_id: 18813,
+      offer_ids: [18813],
       domain_id: 1813,
       group_id: 10332,
       traffic_source_id: 836,

@@ -56,6 +56,9 @@ class FakeKeitaro:
             "delete": None,
         }
         self.empty_dirs = False
+        # offer_id, который «не пристал» к оффер-потоку (POST /streams
+        # проходит, но оффера в созданном потоке нет — как на живом Keitaro).
+        self.drop_offers: set[int] = set()
 
     # --- helpers для ассертов ---
 
@@ -165,6 +168,11 @@ class FakeKeitaro:
             sid = self.next_stream
             self.next_stream += 1
             stream = dict(body)
+            if self.drop_offers:
+                stream["offers"] = [
+                    o for o in (stream.get("offers") or [])
+                    if o.get("offer_id") not in self.drop_offers
+                ]
             stream["id"] = sid
             self.streams[sid] = stream
             return httpx.Response(200, json=stream)
@@ -175,11 +183,18 @@ class FakeKeitaro:
 VALID_BODY = {
     "name": "leo_kz_offer_123",
     "geos": ["KZ", "UZ"],
-    "offer_id": 18813,
+    "offer_ids": [18813],
     "domain_id": 1813,
     "group_id": 10332,
     "traffic_source_id": 836,
 }
+
+
+def _expected_shares(n: int) -> list[int]:
+    """Правило дележа из плана §4: divmod(100, N), первые rest офферов
+    получают base + 1 (3 оффера → 34/33/33). Сумма всегда 100."""
+    base, rest = divmod(100, n)
+    return [base + 1] * rest + [base] * (n - rest)
 
 
 @pytest.fixture()
@@ -246,6 +261,7 @@ def test_happy_path_two_geos(api):
     assert offer["campaign_id"] == cid
     assert offer["type"] == "default"
     assert offer["schema"] == "landings"
+    # Один оффер → ровно один элемент с долей 100.
     assert offer["offers"] == [{"offer_id": 18813, "share": 100}]
 
     # enable — ровно один раз и строго после обоих потоков
@@ -311,7 +327,14 @@ def test_live_campaigns_list_prefilter_untouched(api):
         {"name": ""},
         {"name": "x" * 256},
         {"name": "   "},
-        {"offer_id": 0},
+        # offer_ids: 1..20, gt=0, только числа
+        {"offer_ids": []},
+        {"offer_ids": 18813},            # число вместо списка
+        {"offer_ids": [0]},
+        {"offer_ids": [-5]},
+        {"offer_ids": ["abc"]},
+        {"offer_ids": [18813, "abc"]},
+        {"offer_id": 0},                 # старое поле тоже валидируется
         {"offer_id": -5},
     ],
 )
@@ -323,13 +346,146 @@ def test_422_invalid_input(api, over):
     assert api.fake.bodies_for("POST", "/streams") == []
 
 
-@pytest.mark.parametrize("field", ["name", "geos", "offer_id"])
+def test_422_offer_ids_more_than_20(api):
+    resp = _create(api, offer_ids=list(range(1, 22)))
+    assert resp.status_code == 422
+    assert api.fake.bodies_for("POST", "/campaigns") == []
+
+
+def test_offer_ids_twenty_accepted(api):
+    resp = _create(api, offer_ids=list(range(18800, 18820)))
+    assert resp.status_code == 201, resp.text
+
+
+@pytest.mark.parametrize("field", ["name", "geos"])
 def test_422_missing_required_field(api, field):
     body = dict(VALID_BODY)
     del body[field]
     resp = _create(api, body=body)
     assert resp.status_code == 422
     assert api.fake.bodies_for("POST", "/campaigns") == []
+
+
+def test_422_missing_offers_entirely(api):
+    """Ни offer_ids, ни offer_id — 422."""
+    body = dict(VALID_BODY)
+    del body["offer_ids"]
+    resp = _create(api, body=body)
+    assert resp.status_code == 422
+    assert api.fake.bodies_for("POST", "/campaigns") == []
+
+
+# ------------------------------------------------- offer_ids нормализация
+
+
+def test_offer_ids_dedupe_preserve_order(api):
+    """Дубли офферов схлопываются, порядок сохраняется."""
+    resp = _create(api, offer_ids=[18814, 18813, 18814])
+    assert resp.status_code == 201, resp.text
+    offers = api.fake.bodies_for("POST", "/streams")[1]["offers"]
+    assert [o["offer_id"] for o in offers] == [18814, 18813]
+
+
+# ------------------------------------------------- compat старого offer_id
+
+
+def test_legacy_offer_id_accepted_as_single(api):
+    """Старое поле offer_id (одно число) живёт ещё один релиз: == [offer_id]."""
+    body = dict(VALID_BODY)
+    del body["offer_ids"]
+    # В новом VALID_BODY offer_id нет: легаси-поле нужно задать явно,
+    # иначе тело не содержит ни offer_ids, ни offer_id (это 422 по контракту).
+    body["offer_id"] = 18813
+    resp = _create(api, body=body)
+    assert resp.status_code == 201, resp.text
+    offers = api.fake.bodies_for("POST", "/streams")[1]["offers"]
+    assert offers == [{"offer_id": 18813, "share": 100}]
+
+
+def test_both_fields_offer_ids_wins(api):
+    """Пришли оба поля — offer_ids выигрывает."""
+    resp = _create(api, offer_ids=[18813], offer_id=999)
+    assert resp.status_code == 201, resp.text
+    offers = api.fake.bodies_for("POST", "/streams")[1]["offers"]
+    assert [o["offer_id"] for o in offers] == [18813]
+    assert 999 not in [o["offer_id"] for o in offers]
+
+
+# ------------------------------------------------- доли офферов
+
+
+def test_two_offers_50_50(api):
+    resp = _create(api, offer_ids=[18813, 18814])
+    assert resp.status_code == 201, resp.text
+    offers = api.fake.bodies_for("POST", "/streams")[1]["offers"]
+    assert offers == [
+        {"offer_id": 18813, "share": 50},
+        {"offer_id": 18814, "share": 50},
+    ]
+
+
+def test_three_offers_34_33_33_sum_100(api):
+    resp = _create(api, offer_ids=[18813, 18814, 18815])
+    assert resp.status_code == 201, resp.text
+    offers = api.fake.bodies_for("POST", "/streams")[1]["offers"]
+    assert [o["share"] for o in offers] == [34, 33, 33]
+    assert sum(o["share"] for o in offers) == 100
+    assert [o["offer_id"] for o in offers] == [18813, 18814, 18815]
+
+
+def test_offers_order_as_requested(api):
+    """Порядок офферов в потоке — как в запросе (доли при этом равные)."""
+    resp = _create(api, offer_ids=[18815, 18813])
+    assert resp.status_code == 201, resp.text
+    offers = api.fake.bodies_for("POST", "/streams")[1]["offers"]
+    assert [o["offer_id"] for o in offers] == [18815, 18813]
+    assert [o["share"] for o in offers] == _expected_shares(2)
+
+
+def test_shares_rule_matches_plan_for_seven(api):
+    """Правило §4 на неделимом остатке: divmod(100, 7) → 15,15,14,..."""
+    ids = list(range(18800, 18807))
+    resp = _create(api, offer_ids=ids)
+    assert resp.status_code == 201, resp.text
+    offers = api.fake.bodies_for("POST", "/streams")[1]["offers"]
+    assert [o["share"] for o in offers] == _expected_shares(7)
+    assert sum(o["share"] for o in offers) == 100
+
+
+# ------------------------------------------------- оффер не пристал
+
+
+def test_missing_offer_of_many_compensates(api):
+    """Критерий §8: не все офферы пристали к потоку → архив, 502 с шагом
+    "offer stream" и именем отсутствующего оффера; enable не звался."""
+    api.fake.drop_offers = {18814}
+    resp = _create(api, offer_ids=[18813, 18814])
+    assert resp.status_code == 502
+    fake = api.fake
+    cid = fake.next_campaign - 1
+
+    # имя (id) отсутствующего оффера в ответе
+    assert str(18814) in resp.text
+    assert "offer stream" in resp.text or ("offer" in resp.text.lower() and "stream" in resp.text.lower())
+
+    # ровно один компенсирующий DELETE, кампания в архиве
+    assert len(fake.calls_for("DELETE", f"/campaigns/{cid}")) == 1
+    assert fake.campaigns[cid]["state"] == "deleted"
+
+    # enable не звался: включённой полусобранной кампании нет
+    assert fake.calls_for("POST", "/enable") == []
+
+
+def test_missing_single_offer_compensates(api):
+    """Единственный оффер не пристал → тоже архив и 502."""
+    api.fake.drop_offers = {18813}
+    resp = _create(api)
+    assert resp.status_code == 502
+    fake = api.fake
+    cid = fake.next_campaign - 1
+    assert str(18813) in resp.text
+    assert len(fake.calls_for("DELETE", f"/campaigns/{cid}")) == 1
+    assert fake.calls_for("POST", "/enable") == []
 
 
 # ---------------------------------------------------------------- 409 дубль

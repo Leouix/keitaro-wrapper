@@ -28,8 +28,9 @@ import string
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, conint
 
+from ..constants import equal_shares
 from ..deps import get_keitaro_with_key
 from ..keitaro import KeitaroClient, KeitaroUnavailable
 
@@ -39,6 +40,7 @@ router = APIRouter(tags=["campaign-creator"])
 
 GEO_RE = re.compile(r"^[A-Z]{2}$")
 MAX_GEOS = 20
+MAX_OFFERS = 20
 ALIAS_ALPHABET = string.ascii_letters + string.digits
 GEO_REDIRECT_URL = "https://google.com"
 
@@ -46,7 +48,11 @@ GEO_REDIRECT_URL = "https://google.com"
 class CreateCampaignBody(BaseModel):
     name: str
     geos: list[str]
-    offer_id: int = Field(gt=0)
+    # offer_ids — основной способ (1..20 оферов, доли равные); offer_id —
+    # одиночный офер для совместимости со старым контрактом (ещё этот
+    # релиз). Пришли оба — offer_ids выигрывает.
+    offer_id: int | None = Field(default=None, gt=0)
+    offer_ids: list[conint(gt=0)] | None = None
     domain_id: int = Field(gt=0)
     group_id: int = Field(gt=0)
     traffic_source_id: int = Field(gt=0)
@@ -111,6 +117,33 @@ def _find_duplicate(data, name: str) -> dict | None:
     return None
 
 
+def _normalize_offer_ids(
+    offer_ids: list[int] | None, offer_id: int | None
+) -> list[int]:
+    """Итоговый список офферов: дубли схлопнуты, порядок ввода сохранён.
+
+    offer_ids есть → он и используется (offer_id игнорируется); только
+    offer_id → [offer_id] (совместимость со старым контрактом); ни того,
+    ни другого (или пустой список) → 422 с формулировкой через offer_ids.
+    """
+    raw = offer_ids
+    if raw is None and offer_id is not None:
+        raw = [offer_id]
+    if raw is None:
+        raise HTTPException(422, "offer_ids: at least one offer is required")
+    ids: list[int] = []
+    seen: set[int] = set()
+    for item in raw:
+        if item not in seen:
+            seen.add(item)
+            ids.append(item)
+    if not ids:
+        raise HTTPException(422, "offer_ids: at least one offer is required")
+    if len(ids) > MAX_OFFERS:
+        raise HTTPException(422, f"offer_ids: at most {MAX_OFFERS} offers are allowed")
+    return ids
+
+
 def _campaign_id_of(campaign) -> int | None:
     try:
         return int(campaign.get("id"))
@@ -149,15 +182,22 @@ async def _campaign_url(
 
 
 class _OfferNotAttached(Exception):
-    """Keitaro ответил 2xx, но оффер к потоку не пристал.
+    """Keitaro ответил 2xx, но не все офферы пристали к потоку.
 
     Живая кампания без трафика на оффер недопустима: уходим в обычную
     компенсацию (архив кампании) с этим текстом в detail.
     """
 
-    def __init__(self, offer_id: int):
-        self.offer_id = offer_id
-        super().__init__(f"Offer {offer_id} was not attached to the stream")
+    def __init__(self, missing: list[int]):
+        self.missing = list(missing)
+        if len(missing) == 1:
+            text = f"Offer {missing[0]} was not attached to the stream"
+        else:
+            text = (
+                f"Offers {', '.join(str(i) for i in missing)} "
+                "were not attached to the stream"
+            )
+        super().__init__(text)
 
 
 def _stream_has_offer(stream, offer_id: int) -> bool:
@@ -169,22 +209,28 @@ def _stream_has_offer(stream, offer_id: int) -> bool:
     )
 
 
-async def _require_offer_attached(
+def _missing_offers(stream, offer_ids: list[int]) -> list[int]:
+    return [oid for oid in offer_ids if not _stream_has_offer(stream, oid)]
+
+
+async def _require_offers_attached(
     keitaro: KeitaroClient,
     offer_stream,
     campaign_id: int,
-    offer_id: int,
+    offer_ids: list[int],
 ) -> None:
-    """Оффер должен реально присутствовать в созданном потоке.
+    """Все офферы должны реально присутствовать в созданном потоке.
 
-    Сначала смотрим ответ POST /streams; если оффера там не видно —
+    Сначала смотрим ответ POST /streams; если хоть одного не видно —
     перепроверяем списком потоков кампании (GET /streams?campaign_id=),
-    часть сборок не возвращает offers в ответе на создание. Если и там
-    нет (или перепроверка не удалась — нельзя подтвердить приставание) —
-    _OfferNotAttached → компенсация. Fail-closed: лучше откатить кампанию,
-    чем оставить живую без трафика на оффер.
+    часть сборок не возвращает offers в ответе на создание. Если хоть
+    один оффер так и не найден (или перепроверка не удалась — нельзя
+    подтвердить полный набор) — _OfferNotAttached → компенсация.
+    Fail-closed: лучше откатить кампанию, чем оставить живую без части
+    трафика на офферы.
     """
-    if _stream_has_offer(offer_stream, offer_id):
+    missing = _missing_offers(offer_stream, offer_ids)
+    if not missing:
         return
     try:
         streams = await keitaro.get_streams_by_campaign(campaign_id)
@@ -194,9 +240,10 @@ async def _require_offer_attached(
         )
         streams = None
     for stream in streams if isinstance(streams, list) else []:
-        if _stream_has_offer(stream, offer_id):
+        missing = _missing_offers(stream, offer_ids)
+        if not missing:
             return
-    raise _OfferNotAttached(offer_id)
+    raise _OfferNotAttached(missing)
 
 
 def _step_failure(
@@ -269,6 +316,7 @@ async def create_campaign(
     """
     name = _validate_name(body.name)
     geos = _normalize_geos(body.geos)
+    offer_ids = _normalize_offer_ids(body.offer_ids, body.offer_id)
 
     # Дубль имени: точное совпадение без учёта регистра → 409, фронт
     # переспрашивает («Всё равно создать» → confirm_duplicate=true).
@@ -325,7 +373,12 @@ async def create_campaign(
         "action_type": "http",
         "schema": "landings",
         "collect_clicks": True,
-        "offers": [{"offer_id": body.offer_id, "share": 100}],
+        # Доли равные, сумма ровно 100 (equal_shares — общее правило со
+        # streams.py): порядок офферов — как в вводе.
+        "offers": [
+            {"offer_id": oid, "share": share}
+            for oid, share in zip(offer_ids, equal_shares(len(offer_ids)))
+        ],
     }
 
     step = "geo stream"
@@ -333,10 +386,12 @@ async def create_campaign(
         geo_stream = await keitaro.create_stream(geo_stream_payload)
         step = "offer stream"
         offer_stream = await keitaro.create_stream(offer_stream_payload)
-        # Keitaro может молча создать поток без оффера: проверяем реально
-        # приставший offer_id (ответ POST → перепроверка списком потоков).
-        # Без оффера кампанию не включаем — уход в компенсацию ниже.
-        await _require_offer_attached(keitaro, offer_stream, campaign_id, body.offer_id)
+        # Keitaro может молча создать поток без части офферов: проверяем,
+        # что пристали ВСЕ (ответ POST → перепроверка списком потоков).
+        # Неполный набор — кампанию не включаем, уход в компенсацию ниже.
+        await _require_offers_attached(
+            keitaro, offer_stream, campaign_id, offer_ids
+        )
         step = "enable"
         enabled = await keitaro.enable_campaign(campaign_id)
     except Exception as e:

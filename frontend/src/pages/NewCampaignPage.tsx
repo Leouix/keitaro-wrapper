@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CampaignOptionItem, CreateCampaignResult } from '../api/types';
 import { Button } from '../components/ui/Button';
@@ -8,8 +8,10 @@ import { Message } from '../components/ui/Message';
 import { PageHeader } from '../components/ui/PageHeader';
 import { SkeletonRows } from '../components/ui/Skeleton';
 import fm from '../components/ui/Field.module.css';
-import { createCampaign, checkOffer } from '../features/campaign-new/campaignNewApi';
+import { createCampaign } from '../features/campaign-new/campaignNewApi';
 import { GeoPicker } from '../features/campaign-new/GeoPicker';
+import { OfferPicker } from '../features/campaign-new/OfferPicker';
+import type { OfferChip } from '../features/campaign-new/OfferPicker';
 import { useCampaignOptions } from '../features/campaign-new/useCampaignOptions';
 import s from './NewCampaignPage.module.css';
 
@@ -22,6 +24,10 @@ const MAX_GEOS = 20;
 
 /** Текст валидации «минимум одна страна» — совпадает с GeoPicker-ошибкой. */
 const GEO_REQUIRED = 'Укажите хотя бы одну страну.';
+/** Текст валидации «минимум один оффер» — совпадает с OfferPicker-ошибкой. */
+const OFFER_REQUIRED = 'Укажите хотя бы один оффер.';
+/** Максимум офферов в одной кампании — та же защита, что и для стран (план, §10). */
+const MAX_OFFERS = 20;
 
 interface SavedChoice {
   domainId?: number | null;
@@ -51,36 +57,6 @@ function saveChoice(value: { domainId: string; groupId: string; sourceId: string
   } catch {
     // приватный режим и т.п. — запоминание не критично
   }
-}
-
-function offerHintOf(check: OfferCheck, offerId: number): { text: string; kind: '' | 'found' | 'error' } {
-  if (check.busy) return { text: 'Проверяем…', kind: '' };
-  if (check.status === 200) {
-    return {
-      text: `Оффер ${offerId}: ${check.name || 'без названия'}${check.state ? ` — ${check.state}` : ''}`,
-      kind: 'found',
-    };
-  }
-  if (check.status === 403) {
-    return {
-      text: `Нет прав у ключа на этот оффер${check.detail ? `: ${check.detail}` : ''}. Создание кампании не блокируем.`,
-      kind: 'error',
-    };
-  }
-  if (check.status === 404) {
-    return { text: `Оффер ${offerId} не найден в Keitaro.`, kind: 'error' };
-  }
-  if (check.status === 502) return { text: 'Keitaro недоступен.', kind: 'error' };
-  if (check.status === 0) return { text: 'Сеть недоступна.', kind: 'error' };
-  return { text: check.detail || `Не удалось проверить оффер (код ${check.status}).`, kind: 'error' };
-}
-
-interface OfferCheck {
-  busy: boolean;
-  status?: number;
-  name?: string | null;
-  state?: string | null;
-  detail?: string;
 }
 
 function SelectField({
@@ -135,12 +111,11 @@ export function NewCampaignPage() {
 
   const [name, setName] = useState('');
   const [geos, setGeos] = useState<string[]>([]);
-  const [offerId, setOfferId] = useState('');
+  const [offers, setOffers] = useState<OfferChip[]>([]);
   // Явный выбор пользователя; null — «не трогал», действует дефолт.
   const [domainChoice, setDomainChoice] = useState<string | null>(null);
   const [groupChoice, setGroupChoice] = useState<string | null>(null);
   const [sourceChoice, setSourceChoice] = useState<string | null>(null);
-  const [offerCheck, setOfferCheck] = useState<OfferCheck | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -148,7 +123,6 @@ export function NewCampaignPage() {
   const [success, setSuccess] = useState<CreateCampaignResult | null>(null);
 
   const nameRef = useRef<HTMLInputElement>(null);
-  const offerRef = useRef<HTMLInputElement>(null);
   const optionsErrorRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const duplicateRef = useRef<HTMLDivElement>(null);
@@ -217,21 +191,11 @@ export function NewCampaignPage() {
     if (success) successRef.current?.focus();
   }, [success]);
 
-  const offerNum = /^\d+$/.test(offerId.trim()) && Number(offerId.trim()) > 0 ? Number(offerId.trim()) : null;
-
-  async function runOfferCheck() {
-    if (offerNum == null || offerCheck?.busy) return;
-    setOfferCheck({ busy: true });
-    const result = await checkOffer(offerNum);
-    setOfferCheck({ busy: false, ...result });
-  }
-
   function resetSuccess() {
     setSuccess(null);
     setName('');
     setGeos([]);
-    setOfferId('');
-    setOfferCheck(null);
+    setOffers([]);
     setFormError(null);
     setDuplicate(null);
     nameRef.current?.focus();
@@ -240,7 +204,7 @@ export function NewCampaignPage() {
   function validate(): string {
     if (!name.trim()) return 'Укажите название кампании.';
     if (!geos.length) return GEO_REQUIRED;
-    if (offerNum == null) return 'Укажите ID оффера — положительное число.';
+    if (!offers.length) return OFFER_REQUIRED;
     if (optionsPhase === 'ready') {
       if (!domainId) return 'Выберите домен.';
       if (!groupId) return 'Выберите группу кампаний.';
@@ -266,7 +230,7 @@ export function NewCampaignPage() {
     const payload = {
       name: name.trim(),
       geos,
-      offer_id: offerNum ?? 0,
+      offer_ids: offers.map((o) => o.id),
       domain_id: domainId ? Number(domainId) : 0,
       group_id: groupId ? Number(groupId) : 0,
       traffic_source_id: sourceId ? Number(sourceId) : 0,
@@ -312,13 +276,7 @@ export function NewCampaignPage() {
 
   const ready = optionsPhase === 'ready' && options;
   const hintId = 'geo-hint';
-
-  let offerHint: ReactNode = 'Необязательно: проверьте, что оффер существует и доступен ключу.';
-  if (offerCheck && offerNum != null) {
-    offerHint = offerHintOf(offerCheck, offerNum).text;
-  } else if (offerCheck?.busy && offerNum == null) {
-    offerHint = 'Проверяем…';
-  }
+  const offerHintId = 'offer-hint';
 
   return (
     <div className="page">
@@ -409,44 +367,18 @@ export function NewCampaignPage() {
                 />
               </div>
 
-              <div className={fm.field}>
-                <label className={fm.label} htmlFor="offer-id">
-                  ID оффера
+              <div className={s.offerField}>
+                <label className={fm.label} htmlFor="offer-input">
+                  Офферы — ID через запятую
                 </label>
-                <div className={s.offerRow}>
-                  <input
-                    id="offer-id"
-                    ref={offerRef}
-                    className={fm.input}
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={offerId}
-                    onChange={(e) => {
-                      setOfferId(e.target.value);
-                      setOfferCheck(null);
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    onClick={runOfferCheck}
-                    disabled={offerNum == null || Boolean(offerCheck?.busy)}
-                    aria-busy={offerCheck?.busy || undefined}
-                  >
-                    Проверить
-                  </Button>
-                </div>
-                <p
-                  id="offer-hint"
-                  className={[fm.hint, offerCheck && !offerCheck.busy && offerCheck.status !== 200 ? fm.hintError : '']
-                    .filter(Boolean)
-                    .join(' ')}
-                  role="status"
-                  aria-live="polite"
-                >
-                  {offerHint}
-                </p>
+                <OfferPicker
+                  id="offer-input"
+                  hintId={offerHintId}
+                  selected={offers}
+                  onChange={setOffers}
+                  error={formError === OFFER_REQUIRED ? OFFER_REQUIRED : null}
+                  max={MAX_OFFERS}
+                />
               </div>
 
               <SelectField

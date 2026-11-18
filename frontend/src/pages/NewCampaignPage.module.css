@@ -2,16 +2,8 @@
   margin-bottom: 16px;
 }
 
-.offerRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: 420px;
-}
-
-.offerRow input {
-  flex: 1;
-  min-width: 0;
+.offerField {
+  margin-bottom: 16px;
 }
 
 .optionsError {
@@ -70,10 +62,6 @@
 }
 
 @media (max-width: 560px) {
-  .offerRow {
-    max-width: none;
-  }
-
   .successRow {
     flex-direction: column;
     gap: 2px;
