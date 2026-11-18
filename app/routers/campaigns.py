@@ -88,11 +88,17 @@ def sync_stream_offer_state(db: Session, campaign_id: int, streams) -> None:
     строки, которых в payload больше нет, — архив reason="keitaro" (уже
     архивные не трогаем). Любая ошибка БД не должна ломать страницу —
     вызывающий код оборачивает вызов в try/except.
+
+    SQL: две выборки независимо от числа потоков и оферов — существующие
+    строки одним запросом WHERE stream_id IN (...) и выборка на архивацию
+    по кампании (раньше был SELECT на каждый офер каждого потока, K×N).
     """
     if not isinstance(streams, list):
         return
     now = utcnow()
     seen: set[tuple[int, int]] = set()
+    entries: dict[tuple[int, int], dict] = {}
+    stream_campaign: dict[int, int] = {}
     for st in streams:
         if not isinstance(st, dict):
             continue
@@ -103,29 +109,36 @@ def sync_stream_offer_state(db: Session, campaign_id: int, streams) -> None:
         st_campaign = st.get("campaign_id")
         if st_campaign is None:
             st_campaign = campaign_id  # fallback: кампания из пути
+        stream_campaign[stream_id] = int(st_campaign)
         for o in st.get("offers") or []:
             try:
                 offer_id = int(o.get("offer_id"))
             except (TypeError, ValueError):
                 continue
             seen.add((stream_id, offer_id))
-            row = (
-                db.query(StreamOfferState)
-                .filter(
-                    StreamOfferState.stream_id == stream_id,
-                    StreamOfferState.offer_id == offer_id,
-                )
-                .one_or_none()
-            )
-            if row is None:
-                row = StreamOfferState(stream_id=stream_id, offer_id=offer_id)
-                db.add(row)
-            row.campaign_id = int(st_campaign)
-            row.share = o.get("share")
-            row.state = o.get("state") or "active"
-            row.last_seen_at = now
-            row.archived_at = None
-            row.archive_reason = None
+            entries[(stream_id, offer_id)] = o
+    stream_ids = {sid for sid, _ in seen}
+    existing: dict[tuple[int, int], StreamOfferState] = {}
+    if stream_ids:
+        existing = {
+            (row.stream_id, row.offer_id): row
+            for row in db.query(StreamOfferState)
+            .filter(StreamOfferState.stream_id.in_(stream_ids))
+            .all()
+        }
+    for key in seen:
+        stream_id, offer_id = key
+        row = existing.get(key)
+        if row is None:
+            row = StreamOfferState(stream_id=stream_id, offer_id=offer_id)
+            db.add(row)
+        entry = entries[key]
+        row.campaign_id = stream_campaign[stream_id]
+        row.share = entry.get("share")
+        row.state = entry.get("state") or "active"
+        row.last_seen_at = now
+        row.archived_at = None
+        row.archive_reason = None
     for row in (
         db.query(StreamOfferState)
         .filter(

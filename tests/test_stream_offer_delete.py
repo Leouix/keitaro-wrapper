@@ -11,10 +11,13 @@ test_stream_offer_add.py; здесь добавляется только мок 
 import httpx
 import pytest
 
+from sqlalchemy import event
+
 from app.keybox import KeyStore, get_key_store
 from app.main import app
 from app.models import StreamOfferState, utcnow
 from app.deps import get_keitaro_with_key
+from app.routers.campaigns import sync_stream_offer_state
 from app.routers.streams import reshare
 
 from tests.conftest import HTML_LOGIN_PAGE, make_app_client, make_keitaro
@@ -454,6 +457,52 @@ def test_archive_endpoint_works_without_api_key(tmp_path):
 
 
 # --- 8. Синхронизация списком ------------------------------------------------
+
+
+def test_sync_constant_number_of_queries():
+    """Регрессия N+1 SQL: sync делал SELECT на каждый офер каждого потока
+    (K×N запросов). Теперь — одна выборка WHERE stream_id IN (...) плюс
+    выборка на архивацию, независимо от числа потоков и оферов."""
+    streams = [
+        {
+            "id": STREAM_ID + i,
+            "type": "regular",
+            "name": f"Flow {i}",
+            "campaign_id": CAMPAIGN_ID,
+            "schema": "landings",
+            "offers": [
+                {"offer_id": 25327 + j, "share": 10, "state": "active"}
+                for j in range(3)
+            ],
+        }
+        for i in range(4)  # 4 потока × 3 офера — раньше было бы 12 SELECT'ов
+    ]
+    c, Session = make_client(CampaignStreamsHandler(LANDINGS_3, streams))
+    db = Session()
+    engine = db.get_bind()
+    statements: list[str] = []
+
+    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        sync_stream_offer_state(db, CAMPAIGN_ID, streams)
+    finally:
+        event.remove(engine, "before_cursor_execute", before_cursor_execute)
+    selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+    assert len(selects) <= 3
+
+    # Функциональный итог не изменился: все 12 пар живые.
+    rows = (
+        db.query(StreamOfferState)
+        .filter(StreamOfferState.campaign_id == CAMPAIGN_ID)
+        .all()
+    )
+    assert len(rows) == 12
+    for row in rows:
+        assert row.archived_at is None
+    db.close()
 
 
 def test_sync_archives_missing_and_upserts_live_offers():
