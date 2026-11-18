@@ -19,13 +19,13 @@ const streamsBody = [
   },
 ];
 
-function makeFetch(offerImpl: () => Promise<unknown>) {
+function makeFetch(offerImpl: (url: string) => Promise<unknown>) {
   return vi.fn(async (url: string) => {
     if (url.endsWith('/streams')) return json(200, streamsBody);
     if (url.endsWith('/streams/archive')) return json(200, { archived: [] });
     if (url.endsWith('/streams/pending')) return json(200, { pending: [] });
     if (/\/api\/campaigns\/\d+$/.test(url)) return json(200, { name: 'Кампа 1' });
-    if (url.startsWith('/api/offers/')) return offerImpl();
+    if (url.startsWith('/api/offers/')) return offerImpl(url);
     return json(404, null);
   });
 }
@@ -91,6 +91,68 @@ describe('StreamsContent — сервер недоступен (status 0)', () =
       screen.queryByText('Сервер не отвечает. Проверьте, что uvicorn запущен, и обновите страницу.'),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Повторить' })).toBeNull();
+  });
+});
+
+describe('StreamsContent — 403 на оферы (ключ без права Offers)', () => {
+  it('один баннер с текстом detail; в строке офера id и доля на месте, «название недоступно: нет прав» вместо «не удалось загрузить офер»', async () => {
+    vi.stubGlobal(
+      'fetch',
+      makeFetch(() =>
+        Promise.resolve(
+          json(403, { detail: 'You have no permission to access this page - Offers' }),
+        ),
+      ),
+    );
+    renderStreams();
+
+    const banner = await screen.findByText(/Keitaro: нет прав на оферы/);
+    expect(banner.textContent).toBe(
+      'Keitaro: нет прав на оферы: You have no permission to access this page - Offers — замените API-ключ на ключ с правом Offers',
+    );
+    // Ровно один баннер на страницу, а не по строкам.
+    expect(screen.getAllByText(/нет прав на оферы/)).toHaveLength(1);
+
+    // Строка не прячется и не трогается: id, доля и статус из payload потоков.
+    expect(screen.getByText('#4440')).toBeTruthy();
+    expect(screen.getByText('100%')).toBeTruthy();
+    expect(screen.getByText('название недоступно: нет прав')).toBeTruthy();
+    expect(screen.queryByText('не удалось загрузить офер')).toBeNull();
+
+    // Повторить не предлагаем: права меняются в Keitaro, запрос не поможет.
+    expect(screen.queryByRole('button', { name: 'Повторить' })).toBeNull();
+  });
+
+  it('403 и 404 вперемешку: один баннер на 403, 404 остаётся построчно', async () => {
+    const twoOffersBody = [
+      {
+        id: 1313478,
+        name: 'Flow 1',
+        schema: 'landings',
+        offers: [
+          { offer_id: 4440, share: 100, state: 'active' },
+          { offer_id: 4516, share: 0, state: 'active' },
+        ],
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/streams')) return json(200, twoOffersBody);
+        if (url.endsWith('/streams/archive')) return json(200, { archived: [] });
+        if (url.endsWith('/streams/pending')) return json(200, { pending: [] });
+        if (/\/api\/campaigns\/\d+$/.test(url)) return json(200, { name: 'Кампа 1' });
+        if (url.endsWith('/api/offers/4440'))
+          return json(403, { detail: 'You have no permission to access this page - Offers' });
+        if (url.startsWith('/api/offers/')) return json(404, null);
+        return json(404, null);
+      }),
+    );
+    renderStreams();
+
+    expect(await screen.findByText(/Keitaro: нет прав на оферы/)).toBeTruthy();
+    expect(screen.getByText('название недоступно: нет прав')).toBeTruthy(); // 403 — честный текст
+    expect(screen.getByText('не удалось загрузить офер')).toBeTruthy(); // 404 — построчно
   });
 });
 

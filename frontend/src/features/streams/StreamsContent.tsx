@@ -36,6 +36,8 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
     empty,
     pageError,
     serverDown,
+    offerErrors,
+    forbiddenBanner,
     streams,
     offersMap,
     archive,
@@ -587,6 +589,17 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
             </div>
           )}
 
+          {/* Хотя бы один офер ответил 403: у ключа нет права на страницу
+              Offers. Один баннер на страницу с реальным текстом из detail
+              вместо построчного «не удалось загрузить офер» (404/502 остаются
+              построчно). «Повторить» не предлагаем: права меняются в Keitaro,
+              запросом это не лечится. */}
+          {forbiddenBanner && (
+            <div role="alert" aria-live="polite" className={s.errorBlock}>
+              <Message kind="error">{forbiddenBanner}</Message>
+            </div>
+          )}
+
           <div className={s.list}>
             {sorted.map((stream) => (
               <StreamCard
@@ -599,6 +612,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
                 busy={busyStreams.has(stream.id)}
                 error={streamErrors.get(stream.id) ?? null}
                 serverDown={serverDown}
+                offerErrors={offerErrors}
                 onDelete={(st, oid) => void deleteOffer(st, oid)}
                 onCancel={(st, oid) => void cancelPendingChange(st, oid)}
                 onBringBack={(st, oid) => void bringBackOffer(st, oid)}

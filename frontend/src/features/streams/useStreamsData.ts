@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { acceptJson, detailToText, requestJson } from '../../api/client';
+import { offersForbiddenBanner } from './errorTexts';
 import type { ArchivedEntry, CampaignDetail, Offer, PendingRow, Stream } from '../../api/types';
 
 export type PageError = {
@@ -16,6 +17,12 @@ export interface StreamsData {
   /** Хотя бы один запрос страницы упал со статусом 0 (сервер/сеть недоступны):
    *  страница рисуется старыми данными, ошибки оферов собираются в один блок. */
   serverDown: boolean;
+  /** HTTP-статус ошибки по каждому оферу (0 — успех или запроса не было;
+   *  403 / 404 / 502 / …). Строки сами решают, как честно подписать сбой. */
+  offerErrors: Map<number, number>;
+  /** Непустой текст баннера «нет прав на оферы», когда хотя бы один офер
+   *  ответил 403 (права меняются в Keitaro, «Повторить» не поможет). */
+  forbiddenBanner: string | null;
   streams: Stream[];
   offersMap: Map<number, Offer | null>;
   archive: ArchivedEntry[];
@@ -40,6 +47,8 @@ export function useStreamsData(campaignId: string): StreamsData {
   const [empty, setEmpty] = useState(false);
   const [pageError, setPageError] = useState<PageError>(null);
   const [serverDown, setServerDown] = useState(false);
+  const [offerErrors, setOfferErrors] = useState<Map<number, number>>(new Map());
+  const [forbiddenBanner, setForbiddenBanner] = useState<string | null>(null);
   const [streams, setStreams] = useState<Stream[]>([]);
   const [offersMap, setOffersMap] = useState<Map<number, Offer | null>>(new Map());
   const [archive, setArchive] = useState<ArchivedEntry[]>([]);
@@ -136,17 +145,29 @@ export function useStreamsData(campaignId: string): StreamsData {
       ];
       // Статус 0 у любого офера — сервер/сеть недоступны целиком: один флаг
       // на страницу, ошибки не дублируются по строкам.
+      // 403 хотя бы у одного офера — у ключа нет права на страницу Offers:
+      // один баннер на страницу с реальным текстом из detail, а не построчное
+      // «не удалось загрузить офер» (404/502 остаются построчно).
       let offersServerDown = false;
+      let hasForbidden = false;
+      let forbiddenBody: unknown = null;
       const results = await Promise.all(
         ids.map(async (id) => {
           const r = await requestJson<Offer>(`/api/offers/${id}`, { headers: acceptJson });
           if (r.status === 0) offersServerDown = true;
-          return [id, r.ok ? r.body : null] as const;
+          else if (r.status === 403 && !hasForbidden) {
+            hasForbidden = true;
+            forbiddenBody = r.body;
+          }
+          // Успешному ответу ставим 0, чтобы затереть статус прошлой загрузки.
+          return [id, r.ok ? r.body : null, r.ok ? 0 : r.status] as const;
         }),
       );
       if (mySeq !== seqRef.current) return false;
 
       setOffersMap(new Map(results.map(([id, offer]) => [id, offer])));
+      setOfferErrors(new Map(results.map(([id, , errStatus]) => [id, errStatus])));
+      setForbiddenBanner(hasForbidden ? offersForbiddenBanner(forbiddenBody) : null);
       setServerDown(offersServerDown);
       setLoading(false);
 
@@ -165,6 +186,8 @@ export function useStreamsData(campaignId: string): StreamsData {
     empty,
     pageError,
     serverDown,
+    offerErrors,
+    forbiddenBanner,
     streams,
     offersMap,
     archive,

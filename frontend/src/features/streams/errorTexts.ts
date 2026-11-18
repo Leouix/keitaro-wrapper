@@ -1,6 +1,15 @@
 import { detailToText } from '../../api/client';
 import type { RequestResult } from '../../api/types';
 
+/** Строка офера при 403: имя недоступно из-за прав ключа (сам офер не трогаем). */
+export const offerNameForbiddenText = 'название недоступно: нет прав';
+
+/** Баннер страницы при 403 от GET /api/offers/{id}: в detail — реальный текст Keitaro. */
+export function offersForbiddenBanner(body: unknown): string {
+  const detail = detailToText((body as { detail?: unknown } | null)?.detail, '');
+  return `Keitaro: нет прав на оферы${detail ? `: ${detail}` : ''} — замените API-ключ на ключ с правом Offers`;
+}
+
 /** Тексты ошибок POST .../apply. */
 export function applyErrorText(status: number, body: unknown): string {
   const detail = (body as { detail?: unknown } | null)?.detail;

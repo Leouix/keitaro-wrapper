@@ -8,6 +8,7 @@ import { Field } from '../../components/ui/Field';
 import { Message } from '../../components/ui/Message';
 import { pendingAddBadgeText, computeStreamRows } from '../../lib/shares';
 import type { StreamRow } from '../../lib/shares';
+import { offerNameForbiddenText } from './errorTexts';
 import { streamName } from '../../lib/pending';
 import table from '../../components/ui/table.module.css';
 import s from './StreamCard.module.css';
@@ -26,6 +27,9 @@ interface Props {
   error: string | null;
   /** Сервер/сеть недоступны целиком: в строках не дублируем текст ошибки. */
   serverDown: boolean;
+  /** HTTP-статус ошибки по каждому оферу (0 — успех): 403 подписывается
+   *  честно («название недоступно: нет прав»), 404/502 — построчно. */
+  offerErrors?: Map<number, number>;
   onDelete: (stream: Stream, offerId: number) => void;
   onCancel: (stream: Stream, offerId: number) => void;
   onBringBack: (stream: Stream, offerId: number) => void;
@@ -57,6 +61,7 @@ export function StreamCard({
   busy,
   error,
   serverDown,
+  offerErrors,
   onDelete,
   onCancel,
   onBringBack,
@@ -110,6 +115,7 @@ export function StreamCard({
                   sending={sending}
                   busy={busy}
                   serverDown={serverDown}
+                  offerErrors={offerErrors}
                   onDelete={onDelete}
                   onCancel={onCancel}
                   onBringBack={onBringBack}
@@ -154,6 +160,7 @@ function OfferRow({
   sending,
   busy,
   serverDown,
+  offerErrors,
   onDelete,
   onCancel,
   onBringBack,
@@ -164,6 +171,7 @@ function OfferRow({
   sending: boolean;
   busy: boolean;
   serverDown: boolean;
+  offerErrors?: Map<number, number>;
   onDelete: (stream: Stream, offerId: number) => void;
   onCancel: (stream: Stream, offerId: number) => void;
   onBringBack: (stream: Stream, offerId: number) => void;
@@ -172,6 +180,7 @@ function OfferRow({
   const streamId = stream.id;
   const offerId = entry.offer_id;
   const disabled = !streamId || sending || busy;
+  const errStatus = offerErrors?.get(offerId) ?? 0;
 
   const payout = offer ? Number(offer.payout_value) : 0;
   const payoutText = payout ? [payout, offer?.payout_currency].filter(Boolean).join(' ') : '';
@@ -184,13 +193,17 @@ function OfferRow({
           <Badge kind="archived">{reason === 'keitaro' ? 'удалён в Keitaro' : 'в архиве'}</Badge>
         )}
         {/* Сервер недоступен целиком — текст ошибки живёт в общем блоке
-            сверху, здесь только прочерк; сбой одного офера при живом
-            сервере (502/500) по-прежнему виден в своей строке. */}
+            сверху, здесь только прочерк; 403 — честное «нет прав» (id и доля
+            остаются из payload потоков, сам офер не трогаем); сбои одного
+            офера при живом сервере (404/502/500) по-прежнему видны в своей
+            строке. */}
         {offer ? (
           <>{offer.name || ''}</>
         ) : !isArchived ? (
           serverDown ? (
             <span aria-label={`Офер #${offerId}: данные недоступны`}>—</span>
+          ) : errStatus === 403 ? (
+            <em>{offerNameForbiddenText}</em>
           ) : (
             <em>не удалось загрузить офер</em>
           )
