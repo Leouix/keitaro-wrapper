@@ -8,7 +8,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className={s.shell}>
       <header className={s.topbar}>
         <Link to="/" className={s.brand}>
-          Keitaro
+          Keitaro Master
         </Link>
       </header>
       <main className={s.content}>{children}</main>
