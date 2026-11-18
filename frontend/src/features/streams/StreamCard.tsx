@@ -68,11 +68,9 @@ export function StreamCard({
   onAdd,
 }: Props) {
   const name = streamName(stream);
-  const streamArchive = archive.filter(
-    (a) =>
-      a.stream_id === stream.id &&
-      !pendingRows.some((p) => p.action === 'add' && p.offer_id === a.offer_id),
-  );
+  // Архив потока передаётся в computeStreamRows целиком: офер с pending add
+  // рисуется на своей архивной позиции (бейдж «вернётся в поток»), а не уезжает наверх.
+  const streamArchive = archive.filter((a) => a.stream_id === stream.id);
   const rows = computeStreamRows(stream, pendingRows, streamArchive, offersMap);
   const hasRows =
     (Array.isArray(stream.offers) && stream.offers.length > 0) ||

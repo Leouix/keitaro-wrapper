@@ -27,12 +27,17 @@ export function recalculateShares(total: number): number[] | null {
 
 /**
  * Строки таблицы одного потока.
- * Итоговый набор = живые оферы без pending-remove плюс pending-add
- * (черновик и «вернётся в поток»). Строка с pending-remove остаётся на
- * своём месте, её доля — «—». Архивные строки идут после живых,
- * в пересчёте не участвуют и не дублируют pending-add.
- * Пока у потока есть ожидающие изменения — доли пересчитаны локально;
- * без них каждая живая строка показывает свою долю с сервера.
+ * Итоговый набор (для долей) = живые оферы без pending-remove плюс
+ * pending-add в порядке добавления («вернётся в поток» и черновик).
+ * Позиции уже существующих строк фиксированы: строка с pending-remove
+ * остаётся на своём месте среди живых; офер, возвращаемый из архива
+ * (pending add + запись в архиве), рисуется в СВОЕЙ архивной позиции —
+ * наверх не переезжает и при отмене не прыгает обратно. Наверх уходят
+ * только новые черновики (pending add без записи в архиве): после живых
+ * строк, перед архивом, в порядке добавления. Архивные строки идут
+ * в порядке архива, в пересчёте долей не участвуют и не дублируют
+ * pending-add. Пока у потока есть ожидающие изменения — доли пересчитаны
+ * локально; без них каждая живая строка показывает свою долю с сервера.
  */
 export function computeStreamRows(
   stream: Stream,
@@ -45,13 +50,21 @@ export function computeStreamRows(
     streamPending.filter((p) => p.action === 'remove').map((p) => p.offer_id),
   );
   const adds = streamPending.filter((p) => p.action === 'add');
-  const archive = streamArchive.filter(
-    (a) => !adds.some((p) => p.offer_id === a.offer_id),
-  );
+  const addIds = new Set(adds.map((p) => p.offer_id));
+  // Возвращаемые из архива: pending add + запись в архиве → позиция из архива.
+  const restored = new Set(streamArchive.filter((a) => addIds.has(a.offer_id)).map((a) => a.offer_id));
+  // Новые черновики — pending add без записи в архиве.
+  const drafts = adds.filter((p) => !restored.has(p.offer_id));
 
   const liveCount = entries.filter((e) => !removes.has(e.offer_id)).length;
   const total = liveCount + adds.length;
   const recalculated = streamPending.length > 0 ? recalculateShares(total) : null;
+
+  // Доли итогового набора «живые → добавляемые»: раздаём заранее,
+  // чтобы возвращаемая строка получила свою цифру на архивной позиции.
+  const addShares = new Map<number, number | null>();
+  let fi = liveCount;
+  for (const p of adds) addShares.set(p.offer_id, recalculated ? (recalculated[fi++] ?? null) : null);
 
   const rows: StreamRow[] = [];
   let idx = 0;
@@ -75,20 +88,32 @@ export function computeStreamRows(
     });
   }
 
-  for (const a of adds) {
-    const archEntry = streamArchive.find((x) => x.offer_id === a.offer_id) ?? null;
+  for (const a of drafts) {
     rows.push({
       stream,
-      entry: { offer_id: a.offer_id, state: archEntry?.state ?? null },
+      entry: { offer_id: a.offer_id, state: null },
       offer: offersMap.get(a.offer_id) ?? null,
-      share: recalculated ? (recalculated[idx++] ?? null) : null,
+      share: recalculated ? (addShares.get(a.offer_id) ?? null) : null,
       pendingAction: 'add',
       isArchived: false,
       reason: null,
     });
   }
 
-  for (const a of archive) {
+  for (const a of streamArchive) {
+    if (restored.has(a.offer_id)) {
+      // Возвращаемый офер: на архивной позиции, но живой — бейдж и цифра доли.
+      rows.push({
+        stream,
+        entry: { offer_id: a.offer_id, state: a.state ?? null },
+        offer: offersMap.get(a.offer_id) ?? null,
+        share: recalculated ? (addShares.get(a.offer_id) ?? null) : null,
+        pendingAction: 'add',
+        isArchived: false,
+        reason: null,
+      });
+      continue;
+    }
     rows.push({
       stream,
       entry: { offer_id: a.offer_id, state: a.state ?? null },

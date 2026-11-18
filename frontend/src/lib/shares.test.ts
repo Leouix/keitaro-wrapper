@@ -158,4 +158,47 @@ describe('computeStreamRows — с pending', () => {
       share: null,
     });
   });
+
+  // Кейс кампании 212502: архив Flow 2 сверху вниз, Bring Back последней строки.
+  it('212502: Bring Back архивной строки не меняет порядок, у строки бейдж add и доля', () => {
+    const archive: ArchivedEntry[] = [4517, 25327, 4516, 24800, 23142, 4514, 4440].map(
+      (offer_id) => ({ stream_id: 1, offer_id, state: 'active', reason: 'user' }),
+    );
+    const rows = computeStreamRows(stream([]), pending([[4440, 'add']]), archive, offers([4517, 25327, 4516, 24800, 23142, 4514, 4440]));
+    expect(rows.map((r) => r.entry.offer_id)).toEqual([4517, 25327, 4516, 24800, 23142, 4514, 4440]);
+    expect(rows[6]).toMatchObject({
+      entry: { offer_id: 4440 },
+      pendingAction: 'add',
+      isArchived: false,
+      share: 100,
+    });
+    expect(rows.slice(0, 6).every((r) => r.isArchived && r.pendingAction === null && r.share === null)).toBe(true);
+  });
+
+  it('212502: отмена — строка остаётся на месте, снова архивная без доли', () => {
+    const archive: ArchivedEntry[] = [4517, 25327, 4516, 24800, 23142, 4514, 4440].map(
+      (offer_id) => ({ stream_id: 1, offer_id, state: 'active', reason: 'user' }),
+    );
+    const rows = computeStreamRows(stream([]), [], archive, offers([4517, 25327, 4516, 24800, 23142, 4514, 4440]));
+    expect(rows.map((r) => r.entry.offer_id)).toEqual([4517, 25327, 4516, 24800, 23142, 4514, 4440]);
+    expect(rows[6]).toMatchObject({
+      entry: { offer_id: 4440 },
+      pendingAction: null,
+      isArchived: true,
+      share: null,
+    });
+  });
+
+  it('возвращаемый из архива офер рисуется на архивной позиции, не сразу после живых', () => {
+    const archive: ArchivedEntry[] = [
+      { stream_id: 1, offer_id: 20, state: 'active', reason: 'user' },
+      { stream_id: 1, offer_id: 30, state: 'active', reason: 'user' },
+    ];
+    const rows = computeStreamRows(stream([[10, 100]]), pending([[30, 'add']]), archive, offers([10, 20, 30]));
+    expect(rows.map((r) => [r.entry.offer_id, r.share, r.pendingAction, r.isArchived])).toEqual([
+      [10, 50, null, false],
+      [20, null, null, true],
+      [30, 50, 'add', false],
+    ]);
+  });
 });
