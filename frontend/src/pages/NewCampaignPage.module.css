@@ -1,0 +1,81 @@
+.geoField {
+  margin-bottom: 16px;
+}
+
+.offerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+}
+
+.offerRow input {
+  flex: 1;
+  min-width: 0;
+}
+
+.optionsError {
+  margin-bottom: 16px;
+}
+
+.errorActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.formError {
+  margin: 4px 0 16px;
+}
+
+.duplicate {
+  margin: 4px 0 16px;
+}
+
+.success {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.successList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.successRow {
+  display: flex;
+  gap: 12px;
+}
+
+.successRow dt {
+  min-width: 120px;
+  color: var(--muted);
+  font-size: var(--text-md);
+}
+
+.successRow dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+.successActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 560px) {
+  .offerRow {
+    max-width: none;
+  }
+
+  .successRow {
+    flex-direction: column;
+    gap: 2px;
+  }
+}

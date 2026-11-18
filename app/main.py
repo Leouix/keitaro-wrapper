@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from .db import Base, engine
 from .deps import get_keitaro_with_key
 from .keitaro import KeitaroUnavailable
-from .routers import campaigns, offers, streams
+from .routers import campaigns, creator, offers, streams
 from .routers import settings as settings_router
 
 Base.metadata.create_all(bind=engine)
@@ -15,6 +15,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Keitaro Wrapper API", version="0.1.0")
 app.include_router(settings_router.router)
 app.include_router(campaigns.router)
+app.include_router(creator.router)
 app.include_router(offers.router)
 app.include_router(streams.router)
 app.include_router(streams.pending_router)

@@ -79,7 +79,7 @@ describe('HomePage', () => {
     void container;
   });
 
-  it('успешный POST и пустое поле при настроенном ключе ведут на /campaigns', async () => {
+  it('успешный POST и пустое поле при настроенном ключе ведут на /campaigns/new', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -92,7 +92,7 @@ describe('HomePage', () => {
       <MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/campaigns" element={<div>campaigns-probe</div>} />
+          <Route path="/campaigns/new" element={<div>campaigns-new-probe</div>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -101,9 +101,9 @@ describe('HomePage', () => {
       if (el.disabled) throw new Error('not yet enabled');
       return el;
     });
-    // нечисловой путь не нужен: пустое поле + configured → кнопка ведёт на /campaigns
+    // нечисловой путь не нужен: пустое поле + configured → кнопка ведёт на /campaigns/new
     fireEvent.click(btn);
-    expect(await screen.findByText('campaigns-probe', {}, { timeout: 2000 })).toBeTruthy();
+    expect(await screen.findByText('campaigns-new-probe', {}, { timeout: 2000 })).toBeTruthy();
     // POST не уходил: settings GET был единственным запросом
     expect(fetch).toHaveBeenCalledTimes(1);
   });

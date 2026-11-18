@@ -71,3 +71,47 @@ export interface ApplyResult {
   added?: number[];
   removed?: number[];
 }
+
+/* --- Создание кампании: контракт — CAMPAIGN_CREATOR_PLAN.md, разделы 6–7. --- */
+
+export interface CampaignOptionItem {
+  id: number;
+  name: string;
+  state?: string | null;
+}
+
+/** Ответ GET /api/campaign-options. */
+export interface CampaignOptions {
+  domains: CampaignOptionItem[];
+  groups: CampaignOptionItem[];
+  sources: CampaignOptionItem[];
+}
+
+export interface CreateCampaignPayload {
+  name: string;
+  geos: string[];
+  offer_id: number;
+  domain_id: number;
+  group_id: number;
+  traffic_source_id: number;
+  confirm_duplicate: boolean;
+}
+
+export interface CreatedCampaign {
+  id: number;
+  name?: string | null;
+  alias?: string | null;
+  url?: string | null;
+  state?: string | null;
+}
+
+export interface CreatedStream {
+  id: number;
+  name?: string | null;
+}
+
+/** Ответ 201 на POST /api/campaigns. */
+export interface CreateCampaignResult {
+  campaign: CreatedCampaign;
+  streams?: CreatedStream[] | null;
+}

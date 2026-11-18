@@ -7,6 +7,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   let path = '';
   if (pathname.startsWith('/fb/campaigns/')) path = 'Кампании / Потоки';
+  else if (pathname === '/campaigns/new') path = 'Кампании / Создание';
   else if (pathname.startsWith('/campaigns')) path = 'Кампании';
   return (
     <div className={s.shell}>

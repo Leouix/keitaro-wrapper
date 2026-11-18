@@ -99,8 +99,15 @@ export function CampaignsPage() {
   return (
     <div className="page">
       <section className="card">
-        <PageHeader back={{ to: '/', children: '← На главную' }} title="Кампании" />
-
+        <PageHeader
+          back={{ to: '/', children: '← На главную' }}
+          title="Кампании"
+          meta={
+            <Link to="/campaigns/new" className="link">
+              Создать кампанию
+            </Link>
+          }
+        />
         <div className={s.filterRow}>
           <label className={s.label} htmlFor="campaign-query">
             Поиск по названию кампании

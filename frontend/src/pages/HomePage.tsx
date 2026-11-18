@@ -46,8 +46,8 @@ export function HomePage() {
     const apiKey = value.trim();
 
     if (!apiKey) {
-      // Ключ уже настроен — просто идём к списку кампаний.
-      if (configured) navigate('/campaigns');
+      // Ключ уже настроен — сразу к созданию кампании.
+      if (configured) navigate('/campaigns/new');
       return;
     }
 
@@ -63,8 +63,8 @@ export function HomePage() {
     if (!aliveRef.current) return;
 
     if (status === 200 && body?.configured) {
-      // Успех: сразу к списку кампаний.
-      navigate('/campaigns');
+      // Успех: сразу к созданию кампании.
+      navigate('/campaigns/new');
       return;
     }
 
