@@ -126,3 +126,31 @@ describe('HomePage', () => {
     expect(alert.textContent).toBe('Keitaro недоступен, попробуйте позже.');
   });
 });
+
+describe('HomePage — глаз в поле ключа', () => {
+  it('кнопка-глаз переключает type password ↔ text, aria-pressed и aria-label меняются; type="button" не сабмитит форму', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/settings' ? json(200, { configured: false }) : json(200, {}),
+      ),
+    );
+    renderHome();
+
+    const input = document.getElementById('api-key') as HTMLInputElement;
+    await waitFor(() => expect(input.type).toBe('password'));
+
+    const eye = screen.getByRole('button', { name: 'Показать ключ' }) as HTMLButtonElement;
+    expect(eye.type).toBe('button'); // не перехватывает сабмит формы
+    expect(eye.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(eye);
+    expect(input.type).toBe('text');
+    const shown = screen.getByRole('button', { name: 'Скрыть ключ' }) as HTMLButtonElement;
+    expect(shown.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(shown);
+    expect(input.type).toBe('password');
+    expect(screen.getByRole('button', { name: 'Показать ключ' })).toBeTruthy();
+  });
+});

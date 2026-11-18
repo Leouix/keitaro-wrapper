@@ -96,6 +96,7 @@ export function HomePage() {
             id="api-key"
             label="Укажите свой API key"
             type="password"
+            passwordToggle
             name="api_key"
             autoComplete="off"
             spellCheck={false}
