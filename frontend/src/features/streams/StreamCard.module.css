@@ -84,6 +84,19 @@ section.hasDraft {
   gap: 10px;
 }
 
+.row .addActive {
+  color: #fff;
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  transition: all 0.25s;
+}
+
+.row .addActive:hover {
+  color: #fff;
+  background: #143796;
+  border-color: #1d4ed8;
+}
+
 @media (max-width: 560px) {
   .section {
     padding: 14px 10px;

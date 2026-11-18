@@ -454,6 +454,9 @@ function OfferForm({
             title={addTitle}
             onClick={() => void handleAdd()}
             variant="secondary"
+            // Активная кнопка (офер найден и не дубликат) подсвечена синим —
+            // см. .addActive в StreamCard.module.css; неактивная остаётся серой.
+            className={addDisabled ? undefined : s.addActive}
           >
             Добавить
           </Button>
