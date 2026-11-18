@@ -558,3 +558,103 @@ def test_sync_updates_pin_share_from_live_answer():
     r = c.get(f"/api/campaigns/{CAMPAIGN_ID}/streams")
     assert r.status_code == 200
     assert read_pins(Session) == {25327: 40, 25329: 30}
+
+
+# --- 8. Отмена черновика: чистка зомби-пинов (дефект D1) -----------------------
+
+
+def test_cancel_draft_pin_removed_on_put_pending_and_readd_unpinned():
+    # Регрессия D1: пин черновика D=25, «Отменить» (PUT pending без D)
+    # -> пары больше нет в GET pins; повторное добавление того же офера
+    # идёт в Keitaro незапаянным (средний вес живых, 33).
+    h = PendingHandler(PIN3)
+    c, Session = make_client(h)
+    seed_pending(Session, STREAM_ID, 25328, "add")
+    seed_pin(Session, STREAM_ID, 25328, 25)
+
+    r = put_pending(c, {"add": [], "remove": []})
+    assert r.status_code == 200
+    assert r.json()["pending"] == []
+
+    r2 = c.get(f"/api/campaigns/{CAMPAIGN_ID}/streams/pending")
+    assert r2.status_code == 200
+    assert r2.json()["pins"] == []
+    assert read_pins(Session) == {}
+
+    # Повторное добавление: офер незапаянный — пина нет, вес 33.
+    r3 = put_pending(c, {"add": [25328], "remove": []})
+    assert r3.status_code == 200
+    r4 = apply_pending(c)
+    assert r4.status_code == 200
+    assert h.put_bodies[0]["offers"] == [
+        {"offer_id": 25327, "share": 50, "state": "active"},
+        {"offer_id": 25329, "share": 30, "state": "paused"},
+        {"offer_id": 25330, "share": 20, "state": "active"},
+        {"offer_id": 25328, "share": 33, "state": "active"},
+    ]
+    assert read_pins(Session) == {}
+
+
+def test_live_pin_survives_draft_cancel():
+    # Отменяется черновик D — пин живого офера A при этом остаётся.
+    h = PendingHandler(PIN3)
+    c, Session = make_client(h)
+    seed_pending(Session, STREAM_ID, 25328, "add")
+    seed_pin(Session, STREAM_ID, 25328, 25)
+    seed_pin(Session, STREAM_ID, 25327, 50)
+
+    r = put_pending(c, {"add": [], "remove": []})
+    assert r.status_code == 200
+    assert read_pins(Session) == {25327: 50}
+
+
+def test_cancel_all_pending_removes_draft_pins_keeps_live_pins():
+    # Отмена всех pending (пустые add/remove): пины черновиков D и E
+    # сняты, пины живых оферов не тронуты.
+    h = PendingHandler(PIN3)
+    c, Session = make_client(h)
+    seed_pending(Session, STREAM_ID, 25328, "add")
+    seed_pending(Session, STREAM_ID, 25331, "add")
+    seed_pending(Session, STREAM_ID, 25329, "remove")
+    for oid, share in ((25328, 25), (25331, 10), (25327, 50), (25330, 20)):
+        seed_pin(Session, STREAM_ID, oid, share)
+
+    r = put_pending(c, {"add": [], "remove": []})
+    assert r.status_code == 200
+    assert read_pins(Session) == {25327: 50, 25330: 20}
+
+
+def test_apply_noop_leaves_no_zombie_draft_pin():
+    # Пин отменённого ранее черновика D (offер не живой, в pending его
+    # нет) убирается noop-apply; пин живого офера A остаётся.
+    h = PendingHandler(PIN3)
+    c, Session = make_client(h)
+    seed_pin(Session, STREAM_ID, 25328, 25)
+    seed_pin(Session, STREAM_ID, 25327, 50)
+
+    r = apply_pending(c)
+    assert r.status_code == 200
+    assert r.json()["noop"] is True
+    assert h.put_bodies == []
+    assert read_pins(Session) == {25327: 50}
+
+
+def test_apply_noop_keeps_pin_of_pending_remove_offer():
+    # Пин офера в pending-remove (офера уже нет в Keitaro) noop-apply
+    # сохраняет: он «в pending» — его судьбу решит реальное удаление в
+    # _apply_pins_after_put будущего не-noop apply.
+    h = PendingHandler({**PIN3, "offers": [
+        {"offer_id": 25327, "share": 50, "state": "active"},
+        {"offer_id": 25329, "share": 30, "state": "paused"},
+        {"offer_id": 25330, "share": 20, "state": "active"},
+    ]})
+    c, Session = make_client(h)
+    seed_pending(Session, STREAM_ID, 25328, "remove")  # его в Keitaro нет
+    seed_pin(Session, STREAM_ID, 25328, 25)
+    seed_pin(Session, STREAM_ID, 25327, 50)
+
+    r = apply_pending(c)
+    assert r.status_code == 200
+    assert r.json()["noop"] is True
+    assert h.put_bodies == []
+    assert read_pins(Session) == {25328: 25, 25327: 50}

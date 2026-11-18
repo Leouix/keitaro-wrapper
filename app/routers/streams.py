@@ -659,6 +659,22 @@ async def put_stream_pending(
     if add and _pending_pins_blocked(db, stream_id=stream_id, removes=remove):
         raise HTTPException(409, PIN_NO_FREE_WEIGHT)
 
+    # Пины отменённых черновиков чистим после замены набора (D1): если
+    # офер был в старом add, не входит в новый add и не живой в потоке,
+    # его пин — зомби от отменённого черновика. Пины удаляемых оферов не
+    # считаем отменёнными — их удаление легально (офер уходит из потока).
+    old_adds = {
+        r.offer_id
+        for r in (
+            db.query(StreamOfferPending)
+            .filter(
+                StreamOfferPending.stream_id == stream_id,
+                StreamOfferPending.action == "add",
+            )
+            .all()
+        )
+    }
+
     db.query(StreamOfferPending).filter(
         StreamOfferPending.stream_id == stream_id
     ).delete()
@@ -677,6 +693,9 @@ async def put_stream_pending(
             )
         )
     db.commit()
+    _clear_cancelled_draft_pins(
+        db, stream_id=stream_id, old_adds=old_adds, new_adds=set(add)
+    )
     rows = (
         db.query(StreamOfferPending)
         .filter(StreamOfferPending.stream_id == stream_id)
@@ -684,6 +703,51 @@ async def put_stream_pending(
         .all()
     )
     return {"pending": _pending_payload(rows)}
+
+
+def _clear_cancelled_draft_pins(
+    db: Session,
+    *,
+    stream_id: int,
+    old_adds: set[int],
+    new_adds: set[int],
+) -> None:
+    """Отменённые черновики: пин пары больше не имеет смысла (D1).
+
+    Удаляем пины оферов, которые были в старом наборе pending-add, не
+    входят в новый и не живые в потоке (StreamOfferState,
+    archived_at IS NULL). Ошибка записи не ломает ответ (как с pending).
+    """
+    cancelled = old_adds - new_adds
+    if not cancelled:
+        return
+    live_ids = {
+        r.offer_id
+        for r in (
+            db.query(StreamOfferState)
+            .filter(
+                StreamOfferState.stream_id == stream_id,
+                StreamOfferState.archived_at.is_(None),
+            )
+            .all()
+        )
+    }
+    zombie = cancelled - live_ids
+    if not zombie:
+        return
+    try:
+        db.query(StreamOfferPin).filter(
+            StreamOfferPin.stream_id == stream_id,
+            StreamOfferPin.offer_id.in_(zombie),
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "stream_offer_pin draft-cancel cleanup failed: stream=%s offers=%s",
+            stream_id,
+            sorted(zombie),
+        )
 
 
 class PinEntryBody(BaseModel):
@@ -830,6 +894,24 @@ def _clear_pending_quiet(db: Session, *, stream_id: int) -> None:
         )
 
 
+def _clear_stale_pins_quiet(
+    db: Session, *, stream_id: int, keep: set[int]
+) -> None:
+    """Пины оферов вне keep (ни живых, ни ожидаемых в pending) — зомби
+    отменённых черновиков; удаляются без права сломать 200-ответ (D1)."""
+    try:
+        db.query(StreamOfferPin).filter(
+            StreamOfferPin.stream_id == stream_id,
+            ~StreamOfferPin.offer_id.in_(keep),
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "stream_offer_pin noop cleanup failed: stream=%s", stream_id
+        )
+
+
 @pending_router.post("/{stream_id}/apply")
 async def apply_stream_pending(
     campaign_id: int = FPath(gt=0),
@@ -890,8 +972,14 @@ async def apply_stream_pending(
 
     if final_ids == live:
         # Менять в Keitaro нечего (например, повторный apply или remove
-        # офера, которого там уже нет): очищаем pending без PUT.
+        # офера, которого там уже нет): очищаем pending без PUT. Заодно
+        # убираем зомби-пины отменённых черновиков — оферов, которых нет
+        # ни в живом составе, ни в pending (D1).
+        pending_ids = {r.offer_id for r in pending_rows}
         _clear_pending_quiet(db, stream_id=stream_id)
+        _clear_stale_pins_quiet(
+            db, stream_id=stream_id, keep=set(live) | pending_ids
+        )
         return {"applied": True, "noop": True, "stream": stream}
 
     final = [live_by_id[oid] for oid in final_ids if oid in live_by_id]
