@@ -229,7 +229,7 @@ describe('StreamsContent — weight pins', () => {
     expect(screen.queryByText('draft')).toBeNull();
   });
 
-  it('"Refresh from Keitaro" does not reset pins', async () => {
+  it('"Fetch from Keitaro" does not reset pins', async () => {
     const fetchMock = makeStreamsFetch({
       pinsInPending: [{ stream_id: 1313478, offer_id: 4440, share: 100 }],
     });
@@ -237,7 +237,7 @@ describe('StreamsContent — weight pins', () => {
     renderStreams();
 
     await screen.findByText('#4440');
-    fireEvent.click(screen.getByRole('button', { name: /Refresh from Keitaro/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Fetch from Keitaro/ }));
     await screen.findByText(/Updated at/);
 
     expect(pinBtn().getAttribute('aria-pressed')).toBe('true');
@@ -498,7 +498,7 @@ describe('StreamsContent — "Add" offer (#4518)', () => {
   });
 });
 
-describe('StreamsContent — "Refresh from Keitaro"', () => {
+describe('StreamsContent — "Fetch from Keitaro"', () => {
   /** A draft in flow 1313478: offer 18813 is marked for addition, lives in the DB. */
   const draftPending = [{ stream_id: 1313478, offer_id: 18813, action: 'add', created_at: null }];
 
@@ -552,7 +552,7 @@ describe('StreamsContent — "Refresh from Keitaro"', () => {
     expect(screen.getByText('Changes: +1')).toBeTruthy();
 
     blockRefresh = true;
-    const btn = screen.getByRole('button', { name: 'Refresh from Keitaro' });
+    const btn = screen.getByRole('button', { name: 'Fetch from Keitaro' });
     btn.focus();
     fireEvent.click(btn);
 
@@ -570,7 +570,7 @@ describe('StreamsContent — "Refresh from Keitaro"', () => {
     expect(screen.getByText('draft')).toBeTruthy();
     expect(screen.getByText('Changes: +1')).toBeTruthy();
     // The button is enabled again, focus on it (it did not unmount).
-    const btnAfter = button('Refresh from Keitaro');
+    const btnAfter = button('Fetch from Keitaro');
     expect(btnAfter.disabled).toBe(false);
     expect(document.activeElement).toBe(btnAfter);
     // The second GET /streams happened.
@@ -588,14 +588,14 @@ describe('StreamsContent — "Refresh from Keitaro"', () => {
     expect(await screen.findByText('Offer 4440')).toBeTruthy();
 
     fail = true;
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh from Keitaro' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fetch from Keitaro' }));
 
     expect(await screen.findByText('Keitaro is unavailable.')).toBeTruthy();
     // The page was not replaced by a pageError, the rows and the draft are in place.
     expect(screen.queryByText('Campaign not found.')).toBeNull();
     expect(screen.getByText('Offer 4440')).toBeTruthy();
     expect(screen.getByText('draft')).toBeTruthy();
-    expect(button('Refresh from Keitaro').disabled).toBe(false);
+    expect(button('Fetch from Keitaro').disabled).toBe(false);
   });
 
   it('status 0 (network): "Network unavailable.", rows in place, no pageError', async () => {
@@ -611,7 +611,7 @@ describe('StreamsContent — "Refresh from Keitaro"', () => {
     expect(await screen.findByText('Offer 4440')).toBeTruthy();
 
     fail = true;
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh from Keitaro' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fetch from Keitaro' }));
 
     expect(await screen.findByText('Network unavailable.')).toBeTruthy();
     expect(screen.getByText('Offer 4440')).toBeTruthy();
@@ -621,7 +621,7 @@ describe('StreamsContent — "Refresh from Keitaro"', () => {
     ).toBeNull();
   });
 
-  it('while apply is running, "Refresh from Keitaro" is disabled; enabled again after it finishes', async () => {
+  it('while apply is running, "Fetch from Keitaro" is disabled; enabled again after it finishes', async () => {
     let release!: () => void;
     const applyResult = json(200, { applied: true, added: [18813], removed: [] });
     const applyImpl = () =>
@@ -632,20 +632,20 @@ describe('StreamsContent — "Refresh from Keitaro"', () => {
     renderStreams();
 
     expect(await screen.findByText('Offer 4440')).toBeTruthy();
-    expect(button('Refresh from Keitaro').disabled).toBe(false);
+    expect(button('Fetch from Keitaro').disabled).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Send to Keitaro' }));
 
     // While sending, refresh is unavailable (mutual exclusion).
-    expect(button('Refresh from Keitaro').disabled).toBe(true);
+    expect(button('Fetch from Keitaro').disabled).toBe(true);
     expect(button('Send to Keitaro').disabled).toBe(true);
 
     release();
     expect(await screen.findByText(/Flows updated: 1/)).toBeTruthy();
-    expect(button('Refresh from Keitaro').disabled).toBe(false);
+    expect(button('Fetch from Keitaro').disabled).toBe(false);
   });
 
-  it('empty state: the "Refresh from Keitaro" button pulls in flows that appeared in Keitaro without F5', async () => {
+  it('empty state: the "Fetch from Keitaro" button pulls in flows that appeared in Keitaro without F5', async () => {
     let hasStreams = false;
     vi.stubGlobal(
       'fetch',
@@ -658,7 +658,7 @@ describe('StreamsContent — "Refresh from Keitaro"', () => {
     expect(await screen.findByText('This campaign has no flows.')).toBeTruthy();
 
     hasStreams = true;
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh from Keitaro' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fetch from Keitaro' }));
 
     expect(await screen.findByText('Offer 4440', {}, { timeout: 3000 })).toBeTruthy();
     expect(screen.queryByText('This campaign has no flows.')).toBeNull();

@@ -46,7 +46,7 @@ export function SendBar({
         onClick={onRefresh}
         buttonRef={refreshButtonRef}
       >
-        {refreshing ? 'Refreshing…' : 'Refresh from Keitaro'} <span className={s.fetchKeitaro}></span>
+        {refreshing ? 'Refreshing…' : 'Fetch from Keitaro'} <span className={s.fetchKeitaro}></span>
       </Button>
       <div className={s.bar}>
         <Button

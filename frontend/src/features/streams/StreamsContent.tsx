@@ -651,7 +651,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
               onClick={() => void runRefresh()}
               buttonRef={refreshBtnRef}
             >
-              {refreshing ? 'Refreshing…' : 'Refresh from Keitaro'}
+              {refreshing ? 'Refreshing…' : 'Fetch from Keitaro'}
             </Button>
             {refreshStatus && (
               <StatusLine error={refreshStatus.error} role="status">
