@@ -69,11 +69,47 @@ describe('pendingForStream / applyTargetIds / streamOfferTotal', () => {
 });
 
 describe('sortedStreams', () => {
-  it('потоки с оферами вперёд, порядок внутри групп сохранён', () => {
+  it('потоки с содержимым вперёд, порядок внутри групп сохранён', () => {
     const a = stream(1, []);
     const b = stream(2, [5]);
     const c = stream(3, []);
     const d = stream(4, [6]);
-    expect(sortedStreams([a, b, c, d]).map((s) => s.id)).toEqual([2, 4, 1, 3]);
+    expect(sortedStreams([a, b, c, d], [], []).map((s) => s.id)).toEqual([2, 4, 1, 3]);
+  });
+
+  it('кампания 212502: все live пустые, архив+pending remove поднимают потоки, пустой — внизу', () => {
+    // Flow 3 (1313478) и Flow 2 (1313230) — архивные строки и pending-удаления;
+    // Flow 1 (1313229) — нечего показывать. Сервер отдаёт порядок 3, 1, 2.
+    const flow1 = stream(1313229, []);
+    const flow2 = stream(1313230, []);
+    const flow3 = stream(1313478, []);
+    const streams = [flow3, flow1, flow2];
+    const pending = [row(1313478, 9901, 'remove'), row(1313230, 9902, 'remove')];
+    const archive = [
+      { stream_id: 1313478, offer_id: 8801 },
+      { stream_id: 1313230, offer_id: 8802 },
+    ];
+    expect(sortedStreams(streams, pending, archive).map((s) => s.id)).toEqual([
+      1313478, 1313230, 1313229,
+    ]);
+  });
+
+  it('архив, отменённый pending-add на тот же оффер, карточку не поднимает', () => {
+    const a = stream(1, []);
+    const b = stream(2, []);
+    const pending = [row(1, 10, 'add')];
+    const archive = [
+      { stream_id: 1, offer_id: 10 },
+      { stream_id: 2, offer_id: 20 },
+    ];
+    // у потока 1 архив погашен pending-add → пустой; у потока 2 архив жив → вперёд
+    expect(sortedStreams([a, b], pending, archive).map((s) => s.id)).toEqual([2, 1]);
+  });
+
+  it('поток с одним pending-add и больше ничего остаётся внизу', () => {
+    const a = stream(1, []);
+    const b = stream(2, [5]);
+    const pending = [row(1, 10, 'add')];
+    expect(sortedStreams([a, b], pending, []).map((s) => s.id)).toEqual([2, 1]);
   });
 });

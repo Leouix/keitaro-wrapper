@@ -1,4 +1,4 @@
-import type { PendingRow, Stream } from '../api/types';
+import type { ArchivedEntry, PendingRow, Stream } from '../api/types';
 
 /** Ожидающие изменения одного потока. */
 export function pendingForStream(pending: PendingRow[], streamId: number): PendingRow[] {
@@ -59,16 +59,36 @@ export function emptyStreamTargets(streams: Stream[], pending: PendingRow[]): nu
 }
 
 /**
- * Потоки с оферами вперёд, пустые — внизу; внутри групп порядок сервера
- * сохраняется (stable sort). Отложенные изменения порядок не двигают:
- * иначе секция прыгает наверх, пока в неё добавляют офер.
+ * Потоки с содержимым вперёд, пустые — внизу; внутри групп порядок сервера
+ * сохраняется (stable sort). «С содержимым» — то, что реально видно в карточке:
+ * есть живые офферы, или pending-удаления, или архивные строки, не отменённые
+ * pending-add на тот же оффер. Поток, у которого только pending-add и больше
+ * ничего, остаётся внизу: иначе секция прыгает наверх, пока в неё добавляют офер.
  */
-export function sortedStreams(streams: Stream[]): Stream[] {
-  const withOffers = new Set(
-    streams.filter((s) => Array.isArray(s.offers) && s.offers.length > 0).map((s) => s.id),
+export function sortedStreams(
+  streams: Stream[],
+  pending: PendingRow[],
+  archive: ArchivedEntry[],
+): Stream[] {
+  const hasContent = new Set(
+    streams
+      .filter((s) => {
+        const streamPending = pendingForStream(pending, s.id);
+        const liveArchive = archive.filter(
+          (a) =>
+            a.stream_id === s.id &&
+            !streamPending.some((p) => p.action === 'add' && p.offer_id === a.offer_id),
+        );
+        return (
+          (Array.isArray(s.offers) && s.offers.length > 0) ||
+          streamPending.some((p) => p.action === 'remove') ||
+          liveArchive.length > 0
+        );
+      })
+      .map((s) => s.id),
   );
   return [...streams].sort(
-    (a, b) => (withOffers.has(b.id) ? 1 : 0) - (withOffers.has(a.id) ? 1 : 0),
+    (a, b) => (hasContent.has(b.id) ? 1 : 0) - (hasContent.has(a.id) ? 1 : 0),
   );
 }
 

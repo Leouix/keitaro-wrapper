@@ -432,7 +432,7 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
 
   const draftAdds = pending.filter((p) => p.action === 'add').length;
   const draftRemoves = pending.length - draftAdds;
-  const sorted = useMemo(() => sortedStreams(streams), [streams]);
+  const sorted = useMemo(() => sortedStreams(streams, pending, archive), [streams, pending, archive]);
 
   if (pageError) {
     return (
