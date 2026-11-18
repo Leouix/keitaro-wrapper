@@ -100,7 +100,10 @@ export function CampaignsPage() {
     <div className="page">
       <section className="card">
         <PageHeader
-          back={{ to: '/', children: '← На главную' }}
+          crumbs={[
+            { label: 'Главная', to: '/' },
+            { label: 'Кампании' },
+          ]}
           title="Кампании"
           meta={
             <Link to="/campaigns/new" className="link">

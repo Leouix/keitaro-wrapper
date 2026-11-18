@@ -477,7 +477,11 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       <div className="page">
         <section className="card">
           <PageHeader
-            back={{ to: '/campaigns', children: '← К списку кампаний' }}
+            crumbs={[
+              { label: 'Главная', to: '/' },
+              { label: 'Кампании', to: '/campaigns' },
+              { label: 'Потоки' },
+            ]}
             title="Потоки кампании"
             meta={
               <p className="counter">
@@ -516,7 +520,11 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       <div className="page">
         <section className="card wide">
           <PageHeader
-            back={{ to: '/campaigns', children: '← К списку кампаний' }}
+            crumbs={[
+              { label: 'Главная', to: '/' },
+              { label: 'Кампании', to: '/campaigns' },
+              { label: 'Потоки' },
+            ]}
             title={title}
             meta={
               <p className="counter">
@@ -543,7 +551,11 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       <div className="page">
         <section className="card">
           <PageHeader
-            back={{ to: '/campaigns', children: '← К списку кампаний' }}
+            crumbs={[
+              { label: 'Главная', to: '/' },
+              { label: 'Кампании', to: '/campaigns' },
+              { label: 'Потоки' },
+            ]}
             title={title}
             meta={
               <p className="counter">
@@ -582,7 +594,11 @@ export function StreamsContent({ campaignId }: { campaignId: string }) {
       {/* Несохранённые изменения: янтарная рамка карточки, пока есть ожидающие. */}
       <section className={`card wide ${pending.length > 0 ? sc.hasDraft : ''}`}>
         <PageHeader
-          back={{ to: '/campaigns', children: '← К списку кампаний' }}
+          crumbs={[
+            { label: 'Главная', to: '/' },
+            { label: 'Кампании', to: '/campaigns' },
+            { label: 'Потоки' },
+          ]}
           title={title}
           meta={
             <p className="counter">

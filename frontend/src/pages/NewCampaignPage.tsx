@@ -281,7 +281,13 @@ export function NewCampaignPage() {
   return (
     <div className="page">
       <section className="card">
-        <PageHeader back={{ to: '/', children: '← На главную' }} title="Создать кампанию" />
+        <PageHeader
+          crumbs={[
+            { label: 'Главная', to: '/' },
+            { label: 'Кампании', to: '/campaigns' },
+            { label: 'Создание кампании' },
+          ]}
+          title="Создать кампанию" />
 
         {optionsPhase === 'loading' && (
           <div aria-busy="true">

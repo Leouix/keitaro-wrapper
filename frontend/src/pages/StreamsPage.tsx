@@ -22,7 +22,11 @@ export function StreamsPage() {
       <div className="page">
         <section className="card">
           <PageHeader
-            back={{ to: '/campaigns', children: '← К списку кампаний' }}
+            crumbs={[
+              { label: 'Главная', to: '/' },
+              { label: 'Кампании', to: '/campaigns' },
+              { label: 'Потоки' },
+            ]}
             title="Потоки кампании"
           />
           <div ref={errorRef} role="alert" tabIndex={-1}>

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CampaignsPage } from './CampaignsPage';
 
@@ -98,5 +98,17 @@ describe('CampaignsPage', () => {
     const alert = await screen.findByRole('alert', {}, { timeout: 3000 });
     expect(alert.querySelector('p')?.textContent).toBe('Сначала укажите API key.');
     expect(screen.getByText('Указать API key на главной')).toBeTruthy();
+  });
+
+  it('хлебные крошки: Главная → Кампании, текущая — не ссылка', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    renderCampaigns();
+
+    const nav = screen.getByRole('navigation', { name: 'Хлебные крошки' });
+    const home = within(nav).getByRole('link', { name: 'Главная' });
+    expect(home.getAttribute('href')).toBe('/');
+    expect(within(nav).queryByRole('link', { name: 'Кампании' })).toBeNull();
+    const current = within(nav).getByText('Кампании');
+    expect(current.getAttribute('aria-current')).toBe('page');
   });
 });

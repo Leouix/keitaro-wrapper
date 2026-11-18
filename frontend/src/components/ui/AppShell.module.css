@@ -28,13 +28,6 @@
   color: var(--primary);
 }
 
-.path {
-  color: var(--muted);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  margin-top: 3px;
-}
-
 .content {
   flex: 1;
 }

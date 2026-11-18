@@ -1,22 +1,38 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
-/** Шапка страницы: обратная ссылка, заголовок, строка-метаданные. */
+export type Crumb = { label: string; to?: string };
+
+/** Шапка страницы: хлебные крошки, заголовок, строка-метаданные.
+ *  Последняя крошка — текущая страница: не ссылка, aria-current="page". */
 export function PageHeader({
-  back,
+  crumbs,
   title,
   meta,
 }: {
-  back: { to: string; children: ReactNode } | null;
+  crumbs: Crumb[];
   title: ReactNode;
   meta?: ReactNode;
 }) {
   return (
     <div className="page-head">
-      {back && (
-        <Link to={back.to} className="back-link">
-          {back.children}
-        </Link>
+      {crumbs.length > 0 && (
+        <nav className="breadcrumbs" aria-label="Хлебные крошки">
+          <ol>
+            {crumbs.map((crumb, i) => {
+              const last = i === crumbs.length - 1;
+              return (
+                <li key={crumb.label}>
+                  {last || !crumb.to ? (
+                    <span aria-current={last ? 'page' : undefined}>{crumb.label}</span>
+                  ) : (
+                    <Link to={crumb.to}>{crumb.label}</Link>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
       )}
       <h1>{title}</h1>
       {meta}

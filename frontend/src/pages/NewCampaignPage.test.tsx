@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { NewCampaignPage } from './NewCampaignPage';
 
@@ -460,6 +460,18 @@ describe('NewCampaignPage — офферы-чипы', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe('Укажите хотя бы один оффер.');
     expect(postCalls).toHaveLength(0);
+  });
+});
+
+describe('NewCampaignPage — хлебные крошки', () => {
+  it('Главная → Кампании → Создание кампании; текущая — не ссылка', async () => {
+    renderPage();
+    const nav = await screen.findByRole('navigation', { name: 'Хлебные крошки' }, { timeout: 3000 });
+    expect(within(nav).getByRole('link', { name: 'Главная' }).getAttribute('href')).toBe('/');
+    expect(within(nav).getByRole('link', { name: 'Кампании' }).getAttribute('href')).toBe('/campaigns');
+    const current = within(nav).getByText('Создание кампании');
+    expect(current.getAttribute('aria-current')).toBe('page');
+    expect(within(nav).queryByRole('link', { name: 'Создание кампании' })).toBeNull();
   });
 });
 
